@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp Sessions (Baileys)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --navy:#001D38; --blue:#0075E2; --grey:#6F879F; --line:#dfe6ee; --bg:#f5f8fb; --ok:#1f9d55; --warn:#c77700; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'League Spartan', Inter, system-ui, sans-serif; background:var(--bg); color:var(--navy); }
+  .toolbar { display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
+  header { background:var(--navy); color:#fff; padding:18px 16px; }
+  header h1 { margin:0 auto; max-width:1000px; font-size:22px; font-weight:700; }
+  main { max-width:1000px; margin:0 auto; padding:20px 16px 60px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  input, select, button, textarea { font:inherit; font-size:16px; border-radius:8px; }
+  input, select, textarea { padding:10px 12px; border:1px solid var(--line); background:#fff; color:var(--navy); }
+  .bar input { flex:1; min-width:180px; }
+  button { padding:10px 14px; background:var(--blue); color:#fff; border:none; cursor:pointer; font-weight:500; }
+  button.ghost { background:#fff; color:var(--bad); border:1px solid var(--line); }
+  button.alt { background:#fff; color:var(--blue); border:1px solid var(--blue); }
+  button.link { background:none; color:var(--blue); padding:4px; text-decoration:underline; }
+  button.link.danger { color:var(--bad); font-size:14px; align-self:flex-start; }
+  button:disabled { opacity:.5; cursor:default; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-top:8px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .name { font-weight:700; font-size:18px; word-break:break-all; }
+  .pill { font-size:13px; padding:3px 10px; border-radius:99px; color:#fff; background:var(--grey); white-space:nowrap; }
+  .pill.ready { background:var(--ok); }
+  .pill.qr, .pill.code, .pill.retrying, .pill.requesting_code { background:var(--warn); }
+  .pill.error, .pill.auth_failure { background:var(--bad); }
+  .meta { color:var(--grey); font-size:15px; }
+  .stage { display:flex; flex-direction:column; gap:6px; }
+  .stage .line { display:flex; justify-content:space-between; gap:8px; font-size:15px; }
+  .stage .line span:last-child { color:var(--grey); font-variant-numeric:tabular-nums; }
+  .progress { height:6px; background:var(--line); border-radius:99px; overflow:hidden; }
+  .progress div { height:100%; background:var(--blue); transition:width .4s; }
+  .progress.busy div { width:35%; animation:slide 1.4s ease-in-out infinite; }
+  @keyframes slide { from { margin-left:-35%; } to { margin-left:100%; } }
+  [hidden] { display:none !important; } /* without this, display:flex below overrides "hidden" */
+  .slow { background:#fff7e6; border:1px solid #f3d9a4; border-radius:8px; padding:10px; font-size:14px; display:flex; flex-direction:column; gap:8px; }
+  .qr img { width:100%; max-width:260px; display:block; margin:0 auto; }
+  .qr p { text-align:center; color:var(--grey); margin:6px 0 0; font-size:14px; }
+  .code { text-align:center; } .code b { display:block; font-size:36px; letter-spacing:4px; margin:4px 0; }
+  .code ol { text-align:left; color:var(--grey); font-size:15px; margin:8px 0 0; padding-left:20px; }
+  .row { display:flex; gap:8px; } .row input { flex:1; min-width:0; }
+  form.send { display:flex; flex-direction:column; gap:8px; }
+  .msg { font-size:14px; min-height:1em; white-space:pre-wrap; }
+  .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  .auto { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--grey); font-size:15px; }
+  .auto b.on { color:var(--ok); } .auto b.off { color:var(--grey); }
+  .empty { color:var(--grey); text-align:center; padding:40px 0; }
+  #login { max-width:420px; margin:60px auto; }
+
+  dialog { border:none; border-radius:14px; padding:0; width:min(680px, calc(100vw - 32px)); max-height:calc(100vh - 32px); color:var(--navy); }
+  dialog::backdrop { background:rgba(0,29,56,.55); }
+  dialog form { display:flex; flex-direction:column; gap:14px; padding:20px; }
+  dialog h2 { margin:0; font-size:20px; }
+  dialog h3 { margin:6px 0 0; font-size:17px; }
+  dialog label { display:flex; flex-direction:column; gap:4px; font-weight:500; }
+  dialog label small, .hint { color:var(--grey); font-weight:400; font-size:14px; }
+  dialog textarea { min-height:70px; resize:vertical; }
+  #rPrompt { min-height:220px; }
+  .check { flex-direction:row !important; align-items:center; gap:10px; font-size:17px; }
+  .check input { width:20px; height:20px; }
+  .modes { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .modes label { flex-direction:row; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; }
+  .modes label:has(input:checked) { border-color:var(--blue); background:#f0f7ff; }
+  .modes input { margin-top:3px; }
+  .nums { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
+  .nums input { min-width:0; }
+  .kw { border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .kw .top { align-items:center; }
+  .test { border:1px dashed var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .test .out { background:#e7f7ee; border-radius:10px; padding:10px 12px; white-space:pre-wrap; }
+  .actions { display:flex; gap:8px; justify-content:flex-end; position:sticky; bottom:0; background:#fff; padding:10px 0 2px; }
+  @media (max-width:520px) { .modes { grid-template-columns:1fr; } }
+
+  .who { display:flex; flex-direction:column; gap:8px; }
+  .modes.three { grid-template-columns:repeat(3, 1fr); }
+  @media (max-width:520px) { .modes.three { grid-template-columns:1fr; } }
+  .picker { display:flex; flex-direction:column; gap:8px; border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .whoList { max-height:260px; overflow-y:auto; display:flex; flex-direction:column; }
+  .whoList label { flex-direction:row !important; align-items:center; gap:10px; font-weight:400; padding:8px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .whoList label:last-child { border-bottom:none; }
+  .whoList input { width:18px; height:18px; flex:none; }
+  .whoList .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .whoList .sub { color:var(--grey); font-size:13px; white-space:nowrap; }
+
+  dialog.wide { width:min(960px, calc(100vw - 32px)); }
+  .dataHead { display:flex; justify-content:space-between; align-items:center; padding:20px 20px 0; }
+  .dataHead h2 { margin:0; font-size:20px; }
+  .tabs { display:flex; gap:6px; padding:14px 20px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .tabs button { background:none; color:var(--grey); border-radius:8px 8px 0 0; padding:8px 12px; }
+  .tabs button.on { color:var(--navy); box-shadow:inset 0 -3px 0 var(--blue); }
+  #dataBody { padding:16px 20px 20px; display:flex; flex-direction:column; gap:10px; }
+  .item { border:1px solid var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:6px; font-size:15px; }
+  .item .top b { font-size:16px; }
+  .item .sub { color:var(--grey); font-size:14px; }
+  .item ul { margin:0; padding-left:18px; }
+  .item select { padding:6px 8px; font-size:15px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font-size:13px; padding:2px 8px; border-radius:99px; background:var(--bg); border:1px solid var(--line); }
+  .chip.good { background:#e7f7ee; border-color:#bfe6cf; } .chip.bad { background:#fdecec; border-color:#f3c2c2; }
+  .logbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .logbar select { padding:6px 8px; font-size:15px; }
+  .logs { font-family:ui-monospace, Consolas, monospace; font-size:13px; border:1px solid var(--line); border-radius:10px; max-height:60vh; overflow:auto; }
+  .log { display:flex; gap:10px; padding:5px 10px; border-bottom:1px solid var(--line); }
+  .log:last-child { border-bottom:none; }
+  .log .when { color:var(--grey); white-space:nowrap; }
+  .log .msg { white-space:pre-wrap; word-break:break-word; }
+  .log.error { background:#fdecec; } .log.warn { background:#fff7e6; }
+  .answer { display:flex; flex-direction:column; gap:8px; margin-top:6px; padding-top:10px; border-top:1px dashed var(--line); }
+  .answer textarea { min-height:60px; resize:vertical; }
+  .check.small { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--grey); cursor:pointer; }
+  .check.small input { width:18px; height:18px; }
+  .web { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:14px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+  .web .dot { width:10px; height:10px; border-radius:50%; flex:none; background:var(--ok); }
+  .web.warn .dot { background:var(--warn); } .web.bad .dot { background:var(--bad); }
+  .web.bad { background:#fdecec; } .web.warn { background:#fff7e6; }
+  .web .txt { flex:1; min-width:150px; }
+  .web .sub { color:var(--grey); font-size:13px; display:block; }
+  .web button { padding:6px 10px; font-size:14px; }
+  .badge { background:var(--warn); color:#fff; border-radius:99px; padding:1px 8px; font-size:13px; margin-left:6px; }
+</style>
+</head>
+<body>
+<header><h1>WhatsApp Sessions <small style="font-weight:400;opacity:.75">Baileys</small></h1></header>
+<main>
+  <section id="login" hidden>
+    <p>Enter the API key set on the server (<code>API_KEY</code>).</p>
+    <form class="bar" id="loginForm">
+      <input id="keyInput" type="password" placeholder="API key" autocomplete="current-password" required>
+      <button>Unlock</button>
+    </form>
+    <div class="msg err" id="loginMsg"></div>
+  </section>
+
+  <section id="app" hidden>
+    <form class="bar" id="addForm">
+      <input id="newId" placeholder="Business name, e.g. acme-store" pattern="[a-zA-Z0-9_-]{1,40}" title="Letters, numbers, - or _" required>
+      <input id="newPhone" placeholder="Phone for code login (optional), e.g. 923001234567" inputmode="tel">
+      <button>Connect WhatsApp</button>
+    </form>
+    <div class="msg err" id="addMsg"></div>
+    <div class="toolbar">
+      <span class="msg" id="allMsg"></span>
+      <button type="button" class="alt" id="restartAll" title="Reconnect every business from its saved login">Reload everything</button>
+    </div>
+    <div class="grid" id="list"></div>
+  </section>
+</main>
+
+<dialog id="rulesDlg">
+  <form id="rulesForm">
+    <h2 id="rulesTitle">Auto-replies</h2>
+    <label class="check"><input type="checkbox" id="rEnabled"> Auto-replies on</label>
+
+    <div class="modes">
+      <label><input type="radio" name="mode" value="ai"><span><b>AI replies</b><br><small>Claude or ChatGPT writes each reply from your business info.</small></span></label>
+      <label><input type="radio" name="mode" value="rules"><span><b>Fixed replies</b><br><small>Welcome message and keyword answers you write yourself.</small></span></label>
+    </div>
+
+    <section id="aiSection" style="display:flex;flex-direction:column;gap:14px">
+      <div class="nums">
+        <label>AI provider
+          <select id="rProvider"><option value="anthropic">Claude (Anthropic)</option><option value="openai">ChatGPT (OpenAI)</option></select>
+        </label>
+        <label>Model
+          <input id="rModel" list="modelList" autocomplete="off">
+          <datalist id="modelList"></datalist>
+        </label>
+      </div>
+      <label>API key
+        <small id="keyHint"></small>
+        <input id="rApiKey" type="password" autocomplete="off" placeholder="Paste API key">
+      </label>
+      <label>About the business (the AI's instructions)
+        <small>Products, prices, delivery, payment, hours, how to take an order, tone. The AI only states facts written here.
+          <button type="button" class="link" id="rExample">Insert example</button></small>
+        <textarea id="rPrompt" maxlength="20000"></textarea>
+      </label>
+      <div class="picker">
+        <label class="check"><input type="checkbox" id="rImages"> Understand photos</label>
+        <div class="hint">The AI looks at photos customers send: a product they want, a screenshot of your post, a payment receipt, a damaged item. Works with both Claude and ChatGPT, no extra key. The 3 most recent photos in the chat are included, which adds a little to the cost of each reply.</div>
+      </div>
+      <div class="picker">
+        <label class="check"><input type="checkbox" id="rVoice"> Understand voice notes</label>
+        <div class="hint" id="voiceInfo"></div>
+        <label id="voiceKeyRow">OpenAI key for voice notes
+          <small id="voiceKeyHint"></small>
+          <input id="rVoiceKey" type="password" autocomplete="off" placeholder="sk-...">
+        </label>
+      </div>
+      <label>Manager's WhatsApp number
+        <small>Gets questions the AI can't answer and new-order alerts. The manager replies to the question, and the AI passes the answer on to the customer. Must be a different number from this one. Leave blank to turn off.</small>
+        <input id="rManager" inputmode="tel" placeholder="e.g. 923001234567">
+      </label>
+      <div class="nums">
+        <label>Recent messages the AI reads<input type="number" id="rHistory" min="1" max="50"></label>
+        <label>Update customer profile every (replies)<input type="number" id="rProfileEvery" min="1" max="100"></label>
+        <label>Max AI replies per chat per hour<input type="number" id="rMaxHour" min="1" max="200"></label>
+      </div>
+      <div class="hint">The first time the AI talks to a customer, it reads their whole chat once and saves a profile (name, address, likes, complaints). After that it only reads the recent messages plus the profile, which is faster and cheaper.</div>
+      <div class="test">
+        <strong>Test it</strong>
+        <div class="hint">Uses the settings above (even unsaved). Nothing is sent on WhatsApp.</div>
+        <div class="row">
+          <input id="rTestMsg" placeholder="e.g. kitne ki hai ye shoes? delivery Lahore mein?">
+          <button type="button" id="rTestBtn">Test reply</button>
+        </div>
+        <div id="rTestOut"></div>
+      </div>
+    </section>
+
+    <section id="fixedSection" style="display:flex;flex-direction:column;gap:14px">
+      <label>Welcome message
+        <small>Sent on a customer's first message. Use {name} for their WhatsApp name. Leave blank for none.</small>
+        <textarea id="rWelcome" maxlength="2000" placeholder="Hi {name}! Thanks for messaging us. What are you looking for today?"></textarea>
+      </label>
+      <div>
+        <strong>Keyword replies</strong>
+        <div class="hint">If a message contains any of the words (comma separated), send that reply. First match wins. Works in any language.</div>
+      </div>
+      <div id="rKeywords" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="alt" id="rAddKw">+ Add keyword reply</button>
+      <div class="nums">
+        <label>Greet again after (hours)<input type="number" id="rWelcomeHours" min="1" max="720"></label>
+        <label>Don't repeat a reply for (min)<input type="number" id="rRepeat" min="0" max="1440"></label>
+      </div>
+    </section>
+
+    <label><span id="fallbackLabel">Reply when nothing matches</span>
+      <small id="fallbackHint">Optional. Leave blank to stay quiet.</small>
+      <textarea id="rFallback" maxlength="2000" placeholder="Thanks! A team member will reply shortly."></textarea>
+    </label>
+    <div class="who">
+      <strong>Who gets auto-replies</strong>
+      <div class="modes three">
+        <label><input type="radio" name="who" value="all"><span><b>Everyone</b></span></label>
+        <label><input type="radio" name="who" value="only"><span><b>Only selected</b></span></label>
+        <label><input type="radio" name="who" value="except"><span><b>Everyone except selected</b></span></label>
+      </div>
+      <div id="whoPicker" class="picker">
+        <div class="row">
+          <input id="whoSearch" placeholder="Search name or number" autocomplete="off">
+          <button type="button" class="alt" id="whoReload" title="Reload chats">Reload</button>
+        </div>
+        <div class="hint" id="whoCount"></div>
+        <div id="whoList" class="whoList"></div>
+      </div>
+    </div>
+
+    <label>Pause after I reply myself (minutes)
+      <small>When you answer a chat from your phone, the bot stays out of that chat for this long.</small>
+      <input type="number" id="rPause" min="0" max="1440">
+    </label>
+    <div class="hint">Groups are always ignored. Replies show "typing..." first.</div>
+    <div class="msg err" id="rMsg"></div>
+    <div class="actions">
+      <button type="button" class="ghost" id="rCancel" style="color:var(--navy)">Cancel</button>
+      <button id="rSave">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dataDlg" class="wide">
+  <div class="dataHead">
+    <h2 id="dataTitle">Customers &amp; orders</h2>
+    <button type="button" class="ghost" id="dataClose" style="color:var(--navy)">Close</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button type="button" data-tab="orders" class="on">Orders</button>
+    <button type="button" data-tab="customers">Customers</button>
+    <button type="button" data-tab="questions">Questions for manager</button>
+    <button type="button" data-tab="logs">Logs</button>
+  </div>
+  <div id="dataBody"></div>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let key = '';
+try { key = localStorage.getItem('apiKey') || ''; } catch {}
+const drafts = {};      // half-typed send forms, kept across redraws
+const pairDrafts = {};  // half-typed phone numbers under a QR
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, { ...opts, headers: { 'content-type': 'application/json', 'x-api-key': key } });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { showLogin('Wrong API key.'); throw new Error('unauthorized'); }
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function showLogin(msg = '') {
+  $('#app').hidden = true; $('#login').hidden = false; $('#loginMsg').textContent = msg;
+}
+
+$('#loginForm').onsubmit = (e) => {
+  e.preventDefault();
+  key = $('#keyInput').value.trim();
+  try { localStorage.setItem('apiKey', key); } catch {}
+  start();
+};
+
+// Reconnect every business (one after another).
+$('#restartAll').onclick = async () => {
+  const text = [
+    'Reload everything?',
+    '',
+    "Settings are re-read from the database, then every business reconnects to WhatsApp, one after another, from its saved login (no new scan). Businesses missing from this page come back.",
+    '',
+    'Each business takes a few seconds. Messages arriving meanwhile are picked up after it reconnects.',
+  ].join('\n');
+  if (!confirm(text)) return;
+  const btn = $('#restartAll'); btn.disabled = true; $('#allMsg').textContent = 'Reloading everything...';
+  try {
+    const r = await api('/restart-all', { method: 'POST' });
+    $('#allMsg').textContent = `Reloading ${r.count} business${r.count === 1 ? '' : 'es'}, one at a time. Watch the cards.`;
+  } catch (err) { $('#allMsg').textContent = err.message; }
+  setTimeout(() => { btn.disabled = false; }, 10000);
+  lastJson = ''; refresh();
+};
+
+$('#addForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('#addMsg').textContent = '';
+  try {
+    await api('/sessions', { method: 'POST', body: JSON.stringify({ id: $('#newId').value.trim(), phone: $('#newPhone').value.trim() || undefined }) });
+    $('#newId').value = ''; $('#newPhone').value = ''; refresh();
+  } catch (err) { if (err.message !== 'unauthorized') $('#addMsg').textContent = err.message; }
+};
+
+function el(tag, props = {}, ...kids) {
+  const n = Object.assign(document.createElement(tag), props);
+  kids.flat().forEach((k) => k != null && n.append(k));
+  return n;
+}
+
+const fmt = (ms) => { const t = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
+const PILL = {
+  starting: 'Starting', requesting_code: 'Getting code', loading_qr: 'Getting QR', qr: 'Scan QR', code: 'Enter code',
+  authenticated: 'Logging in', retrying: 'Retrying', restarting: 'Restarting', logging_out: 'Logging out',
+  ready: 'Connected', auth_failure: 'Login failed', error: 'Error',
+};
+
+// What's happening right now, in plain words.
+function stageText(s) {
+  const forCode = s.phone ? ` for +${s.phone}` : '';
+  switch (s.status) {
+    case 'starting':
+      if (s.progress && s.progress.percent > 0) return `Loading chats... ${s.progress.percent}%`;
+      if (s.newLogin) return s.phone ? `Logged out. Getting a new login code${forCode}...` : 'Logged out. Getting a new QR code...';
+      if (s.phone) return `Connecting to WhatsApp to get a login code${forCode}...`;
+      return s.attempt > 1 ? `Connecting to WhatsApp (try ${s.attempt} of 3)...` : 'Connecting to WhatsApp...';
+    case 'requesting_code': return `Asking WhatsApp for a login code${forCode}...`;
+    case 'loading_qr': return 'Switching to a QR code...';
+    case 'authenticated': return 'Linked. Finishing login...';
+    case 'retrying': return 'Connection to WhatsApp dropped. Reconnecting...';
+    case 'restarting': return 'Reconnecting...';
+    case 'logging_out': return 'Logging out of WhatsApp...';
+    default: return '';
+  }
+}
+const WORKING = ['starting', 'requesting_code', 'loading_qr', 'authenticated', 'retrying', 'restarting', 'logging_out'];
+// Connecting normally takes a few seconds; only mention it after a while.
+const SLOW_AFTER_MS = 45000;
+const SLOW_STATES = ['starting', 'requesting_code', 'loading_qr', 'authenticated'];
+
+async function restart(id, phone, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await api(`/sessions/${encodeURIComponent(id)}/restart`, { method: 'POST', body: JSON.stringify(phone === undefined ? {} : { phone }) });
+    delete pairDrafts[id]; refresh();
+  } catch (err) { alert(err.message); if (btn) btn.disabled = false; }
+}
+
+function card(s) {
+  const c = el('div', { className: 'card' },
+    el('div', { className: 'top' },
+      el('div', { className: 'name', textContent: s.id }),
+      el('span', { className: 'pill ' + s.status, textContent: s.newLogin && s.status === 'starting' ? (s.phone ? 'Getting code' : 'Getting QR') : PILL[s.status] || s.status })));
+
+  if (s.me) c.append(el('div', { className: 'meta', textContent: `${s.me.name || ''} +${s.me.number}` }));
+
+  // Progress while connecting: what's happening, how long it's taken, and auto-restart countdown.
+  if (WORKING.includes(s.status)) {
+    const pct = s.status === 'starting' && s.progress ? s.progress.percent : null;
+    const bar = el('div', { className: 'progress' + (pct ? '' : ' busy') }, el('div', { style: pct ? `width:${pct}%` : '' }));
+    const elapsed = el('span', { className: 'tick-elapsed' });
+    elapsed.dataset.since = s.since;
+    c.append(el('div', { className: 'stage' }, el('div', { className: 'line' }, el('span', { textContent: stageText(s) }), elapsed), bar));
+
+    // Only if it's really slow: a calm note, the automatic restart time, and a small manual option.
+    // Not right after a logout: the card is just fetching a new QR code.
+    if (SLOW_STATES.includes(s.status) && !s.newLogin) {
+      const slow = el('div', { className: 'slow tick-slow', hidden: true });
+      slow.dataset.since = s.since;
+      if (s.deadline) slow.dataset.deadline = s.deadline;
+      const countdown = el('span', { className: 'tick-countdown' });
+      const now = el('button', { type: 'button', className: 'link', textContent: 'Restart now' });
+      now.onclick = () => restart(s.id, undefined, now);
+      slow.append(el('span', {}, 'This is taking longer than usual. ', countdown, ' '), now);
+      c.append(slow);
+    }
+
+    // While getting a code, offer the QR instead.
+    if (s.phone && ['starting', 'requesting_code'].includes(s.status)) {
+      const qrBtn = el('button', { className: 'link', type: 'button', textContent: 'Use QR code instead' });
+      qrBtn.onclick = () => restart(s.id, null, qrBtn);
+      c.append(qrBtn);
+    }
+  }
+
+  if (s.error && s.status !== 'ready') c.append(el('div', { className: 'msg err', textContent: s.error }));
+  if (s.status === 'error' || s.status === 'auth_failure') {
+    const retry = el('button', { className: 'alt', textContent: 'Retry' });
+    retry.onclick = () => restart(s.id, undefined, retry);
+    c.append(retry);
+    if (s.phone) {
+      const qrBtn = el('button', { className: 'link', type: 'button', textContent: 'Use QR code instead' });
+      qrBtn.onclick = () => restart(s.id, null, qrBtn);
+      c.append(qrBtn);
+    }
+  }
+
+  if (s.status === 'qr' && s.qr) {
+    c.append(el('div', { className: 'qr' },
+      el('img', { src: s.qr, alt: 'WhatsApp QR code' }),
+      el('p', { textContent: 'WhatsApp > Linked devices > Link a device' })));
+    const pd = pairDrafts[s.id] || (pairDrafts[s.id] = { phone: '' });
+    const phone = el('input', { placeholder: 'Or link with phone number, e.g. 923001234567', value: pd.phone, inputMode: 'tel', required: true, oninput: (e) => pd.phone = e.target.value });
+    const go = el('button', { textContent: 'Get code' });
+    const f = el('form', { className: 'row' }, phone, go);
+    f.onsubmit = (e) => { e.preventDefault(); restart(s.id, pd.phone, go); };
+    c.append(f);
+  }
+
+  if (s.status === 'code' && s.code) {
+    c.append(el('div', { className: 'code' },
+      el('div', { className: 'meta', textContent: `Code for +${s.phone}` }),
+      el('b', { textContent: s.code }),
+      el('ol', {},
+        el('li', { textContent: 'On that phone, open WhatsApp > Linked devices > Link a device' }),
+        el('li', { textContent: 'Tap "Link with phone number instead"' }),
+        el('li', { textContent: 'Enter the code above. It changes every few minutes and only the newest one works, so if it changes here, use the new one.' }))));
+    const qrBtn = el('button', { className: 'link', type: 'button', textContent: 'Use QR code instead' });
+    qrBtn.onclick = () => restart(s.id, null, qrBtn);
+    c.append(qrBtn);
+  }
+
+  // Always-visible full restart while not connected: reload the QR / code, or unstick a
+  // slow or failed start. Connects to WhatsApp again from scratch (a saved login is kept).
+  const RELOAD_LABEL = { qr: 'Reload QR code', loading_qr: 'Reload QR code', code: 'Get a new code', requesting_code: 'Get a new code' };
+  if (s.status !== 'ready' && !['logging_out', 'restarting'].includes(s.status)) {
+    const label = RELOAD_LABEL[s.status] || (s.newLogin ? 'Reload QR code' : 'Reconnect');
+    const reload = el('button', { className: 'alt', type: 'button', textContent: label });
+    reload.onclick = async () => {
+      reload.disabled = true; reload.textContent = 'Restarting...';
+      try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); }
+      catch (err) { alert(err.message); reload.disabled = false; reload.textContent = label; }
+    };
+    c.append(el('div', { className: 'row' }, reload));
+  }
+
+  if (s.status === 'ready') {
+    const d = drafts[s.id] || (drafts[s.id] = { to: '', message: '' });
+    const to = el('input', { placeholder: 'Phone (with country code) or group name', value: d.to, required: true, oninput: (e) => d.to = e.target.value });
+    const message = el('input', { placeholder: 'Message', value: d.message, required: true, oninput: (e) => d.message = e.target.value });
+    const out = el('div', { className: 'msg' });
+    const btn = el('button', { textContent: 'Send' });
+    const f = el('form', { className: 'send' }, to, message, btn, out);
+    f.onsubmit = async (e) => {
+      e.preventDefault(); btn.disabled = true; out.className = 'msg'; out.textContent = 'Sending...';
+      try {
+        const r = await api(`/sessions/${encodeURIComponent(s.id)}/send`, { method: 'POST', body: JSON.stringify({ to: d.to, message: d.message }) });
+        out.className = r.delivered === false ? 'msg err' : 'msg ok'; out.textContent = r.delivered === false ? `Handed to WhatsApp, but ${r.sentTo} hasn't got it yet (${r.status}). Check the phone.` : `Sent to ${r.sentTo}${r.status ? ` (${r.status})` : ''}`; d.message = ''; message.value = '';
+      } catch (err) { out.className = 'msg err'; out.textContent = err.message; }
+      btn.disabled = false;
+    };
+    c.append(f);
+  }
+
+  // Connection health (checked every minute on the server) and a reconnect button.
+  if (s.status === 'ready') {
+    const w = s.web;
+    const hard = el('button', { className: 'alt', type: 'button', textContent: 'Reconnect' });
+    hard.onclick = async () => {
+      if (!confirm(`Reconnect "${s.id}" to WhatsApp?
+
+The connection closes and opens again from the saved login (no new scan). Takes a few seconds; messages arriving meanwhile are picked up after it reconnects.`)) return;
+      hard.disabled = true;
+      try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); }
+      catch (err) { alert(err.message); hard.disabled = false; }
+    };
+    const details = w ? [w.chats != null ? `${w.chats} chats loaded` : null, w.ms != null ? `answered in ${w.ms < 1000 ? `${w.ms} ms` : `${(w.ms / 1000).toFixed(1)} s`}` : null].filter(Boolean).join(' · ') : '';
+    const webRow = el('div', { className: `web ${w ? w.level : ''}` },
+      el('span', { className: 'dot' }),
+      el('span', { className: 'txt' }, `WhatsApp: ${w ? w.text : 'checking...'}`,
+        el('span', { className: 'sub' }, details ? `${details} · ` : '', w?.checkedAt ? Object.assign(el('span', { className: 'tick-ago' }), { textContent: 'checked just now' }) : 'first check in a few seconds')),
+      hard);
+    webRow.querySelector('.tick-ago')?.setAttribute('data-at', w.checkedAt);
+    c.append(webRow);
+  }
+
+  const autoBtn = el('button', { className: 'alt', type: 'button', textContent: 'Edit' });
+  autoBtn.onclick = () => openRules(s.id);
+  c.append(el('div', { className: 'auto' },
+    el('span', {}, 'Auto-replies: ', el('b', { className: s.autoReply ? 'on' : 'off', textContent: s.autoReply || 'Off' })),
+    autoBtn));
+  if (s.aiError) c.append(el('div', { className: 'msg err', textContent: `Last AI reply failed: ${s.aiError}` }));
+
+  const dataBtn = el('button', { className: 'alt', type: 'button' }, 'Customers & orders',
+    s.openQuestions ? el('span', { className: 'badge', title: 'Questions waiting for the manager', textContent: s.openQuestions }) : null);
+  dataBtn.onclick = () => openData(s.id);
+  c.append(dataBtn);
+
+  // Log out: the card stays and shows a new QR. Delete business: the only way a card goes.
+  if (s.status === 'ready') {
+    const logout = el('button', { className: 'ghost', textContent: 'Log out' });
+    logout.onclick = async () => {
+      if (!confirm(`Log "${s.id}" out?\n\nWhatsApp unlinks this device and the card shows a new QR code to link again. Settings, customers and orders are kept.`)) return;
+      logout.disabled = true;
+      try { await api(`/sessions/${encodeURIComponent(s.id)}/logout`, { method: 'POST' }); lastJson = ''; refresh(); }
+      catch (err) { alert(err.message); logout.disabled = false; }
+    };
+    c.append(el('div', { className: 'row' }, logout));
+  }
+  const wipe = el('button', { className: 'link danger', type: 'button', textContent: 'Delete business and all its data' });
+  wipe.onclick = async () => {
+    if (!confirm(`Delete "${s.id}" completely?\n\nThis logs it out, removes this card, and permanently deletes its settings, API keys, customers, orders, questions and logs, on every server. This can't be undone.`)) return;
+    wipe.disabled = true;
+    try { await api(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); delete drafts[s.id]; refresh(); }
+    catch (err) { alert(err.message); wipe.disabled = false; }
+  };
+  c.append(wipe);
+  return c;
+}
+
+// Every second: update elapsed timers and the "taking longer than usual" countdowns.
+setInterval(() => {
+  const now = Date.now();
+  document.querySelectorAll('.tick-ago').forEach((n) => { const sec = Math.max(0, Math.round((now - Number(n.dataset.at)) / 1000)); n.textContent = `checked ${sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m`} ago`; });
+  document.querySelectorAll('.tick-elapsed').forEach((n) => { n.textContent = fmt(now - Number(n.dataset.since)); });
+  document.querySelectorAll('.tick-slow').forEach((n) => {
+    n.hidden = now - Number(n.dataset.since) < SLOW_AFTER_MS;
+    const cd = n.querySelector('.tick-countdown');
+    const left = Number(n.dataset.deadline || 0) - now;
+    cd.textContent = !n.dataset.deadline ? 'WhatsApp is slow to respond. Give it a little longer, or restart it.' : left > 0 ? `If nothing changes, it restarts by itself in ${fmt(left)}.` : 'Restarting by itself now...';
+  });
+}, 1000);
+
+let lastJson = '';
+async function refresh() {
+  let list;
+  try { list = await api('/sessions'); } catch { return; }
+  const json = JSON.stringify(list);
+  if (json === lastJson) return; // don't redraw (and wipe typing) if nothing changed
+  lastJson = json;
+  $('#list').replaceChildren(...(list.length ? list.map(card) : [el('div', { className: 'empty', textContent: 'No WhatsApp numbers connected yet. Add one above.' })]));
+}
+
+// ---------------------------------------------------------------------------
+// Auto-reply editor
+// ---------------------------------------------------------------------------
+let rulesFor = null;
+let loaded = null; // last rules from the server (API key masked)
+
+const EXAMPLE_PROMPT = `Business: Ali Shoes, Lahore. We sell men's and women's shoes.
+
+Products and prices:
+- Men's sneakers: Rs 3,500 (sizes 7 to 11, black and white)
+- Women's sandals: Rs 2,200 (sizes 5 to 9)
+
+Delivery: all over Pakistan in 3 to 5 days. Rs 200 delivery, free above Rs 5,000. Cash on delivery available.
+Returns: exchange within 7 days if unused.
+Hours: we reply 10am to 10pm.
+
+To place an order, collect: name, full address with city, phone number, product, size and colour. Then confirm the total and say the team will confirm the order soon.
+
+Tone: friendly and polite, like a helpful shop assistant.`;
+
+function kwRow(k = { keywords: '', reply: '' }) {
+  const words = el('input', { placeholder: 'price, rate, kitna, قیمت', value: k.keywords, className: 'kwWords' });
+  const reply = el('textarea', { placeholder: 'Our prices start at...', value: k.reply, maxLength: 2000, className: 'kwReply' });
+  const rm = el('button', { type: 'button', className: 'link', textContent: 'Remove' });
+  const row = el('div', { className: 'kw' }, el('div', { className: 'top' }, el('strong', { textContent: 'Keywords' }), rm), words, reply);
+  rm.onclick = () => row.remove();
+  return row;
+}
+
+const mode = () => document.querySelector('input[name=mode]:checked')?.value || 'ai';
+
+function showMode() {
+  const ai = mode() === 'ai';
+  $('#aiSection').style.display = ai ? 'flex' : 'none';
+  $('#fixedSection').style.display = ai ? 'none' : 'flex';
+  $('#fallbackLabel').textContent = ai ? 'Reply if the AI fails' : 'Reply when nothing matches';
+  $('#fallbackHint').textContent = ai
+    ? 'Sent if the AI service is down or declines. Leave blank to stay quiet.'
+    : 'Optional. Leave blank to stay quiet.';
+}
+
+// Model suggestions and key hint depend on the provider.
+function showProvider(keepModel) {
+  const p = $('#rProvider').value;
+  const info = loaded.providers[p];
+  $('#modelList').replaceChildren(...info.models.map((m) => el('option', { value: m })));
+  if (!keepModel) $('#rModel').value = info.defaultModel;
+  $('#rModel').placeholder = info.defaultModel;
+  const sameProvider = loaded.ai.provider === p;
+  let hint;
+  if (sameProvider && loaded.ai.apiKeySet) hint = `Saved key ${loaded.ai.apiKeyHint}. Leave blank to keep it.`;
+  else if (loaded.ai.serverKey[p]) hint = `Leave blank to use the server's ${info.label} key.`;
+  else hint = p === 'anthropic' ? 'From console.anthropic.com > API keys.' : 'From platform.openai.com > API keys.';
+  $('#keyHint').textContent = hint;
+  $('#rApiKey').value = '';
+}
+
+async function openRules(id) {
+  rulesFor = id;
+  $('#rMsg').textContent = '';
+  $('#rTestOut').replaceChildren();
+  $('#rulesTitle').textContent = `Auto-replies for ${id}`;
+  try { loaded = await api(`/sessions/${encodeURIComponent(id)}/rules`); } catch (err) { return alert(err.message); }
+  const r = loaded;
+  $('#rEnabled').checked = r.enabled;
+  // A business that never set anything up starts on AI replies; otherwise show what they saved.
+  const usedFixed = r.mode === 'rules' && (r.enabled || r.welcome || r.fallback || r.keywords.length);
+  document.querySelector(`input[name=mode][value=${usedFixed ? 'rules' : 'ai'}]`).checked = true;
+  $('#rWelcome').value = r.welcome;
+  $('#rFallback').value = r.fallback;
+  $('#rWelcomeHours').value = r.welcomeEveryHours;
+  $('#rRepeat').value = r.repeatAfterMinutes;
+  $('#rPause').value = r.pauseAfterHumanMinutes;
+  $('#rKeywords').replaceChildren(...(r.keywords.length ? r.keywords : [undefined]).map(kwRow));
+  $('#rProvider').value = r.ai.provider;
+  showProvider(true);
+  $('#rModel').value = r.ai.model;
+  $('#rPrompt').value = r.ai.prompt;
+  $('#rHistory').value = r.ai.historyMessages;
+  $('#rMaxHour').value = r.ai.maxRepliesPerHour;
+  $('#rProfileEvery').value = r.ai.profileEveryTurns;
+  $('#rManager').value = r.ai.managerNumber;
+  $('#rVoice').checked = r.ai.transcribeVoice;
+  $('#rImages').checked = r.ai.understandImages;
+  $('#rVoiceKey').value = '';
+  showVoiceKeyHint();
+  document.querySelector(`input[name=who][value=${r.contacts.mode}]`).checked = true;
+  whoSelected = new Map(r.contacts.list.map((c) => [c.id, c.name]));
+  whoChats = null;
+  $('#whoSearch').value = '';
+  showWho();
+  showMode();
+  $('#rulesDlg').showModal();
+}
+
+function formValues() {
+  return {
+    enabled: $('#rEnabled').checked,
+    mode: mode(),
+    welcome: $('#rWelcome').value,
+    fallback: $('#rFallback').value,
+    welcomeEveryHours: Number($('#rWelcomeHours').value),
+    repeatAfterMinutes: Number($('#rRepeat').value),
+    pauseAfterHumanMinutes: Number($('#rPause').value),
+    contacts: { mode: whoMode(), list: [...whoSelected].map(([id, name]) => ({ id, name })) },
+    keywords: [...document.querySelectorAll('#rKeywords .kw')].map((row) => ({
+      keywords: row.querySelector('.kwWords').value, reply: row.querySelector('.kwReply').value,
+    })),
+    ai: {
+      provider: $('#rProvider').value,
+      model: $('#rModel').value.trim(),
+      apiKey: $('#rApiKey').value.trim(),
+      prompt: $('#rPrompt').value,
+      historyMessages: Number($('#rHistory').value),
+      maxRepliesPerHour: Number($('#rMaxHour').value),
+      profileEveryTurns: Number($('#rProfileEvery').value),
+      managerNumber: $('#rManager').value.trim(),
+      transcribeVoice: $('#rVoice').checked,
+      understandImages: $('#rImages').checked,
+      voiceKey: $('#rVoiceKey').value.trim(),
+    },
+  };
+}
+
+// Voice notes are transcribed with OpenAI. With ChatGPT replies that's the same key,
+// so the extra key field only shows when replies use Claude.
+function showVoiceKeyHint() {
+  const a = loaded.ai;
+  const chatgpt = $('#rProvider').value === 'openai';
+  $('#voiceKeyRow').style.display = chatgpt ? 'none' : 'flex';
+  $('#voiceInfo').textContent = chatgpt
+    ? 'Voice notes are turned into text with your ChatGPT key above (Urdu, English and mixed), then the AI reads them. Nothing else to set up. Costs roughly a cent per minute of audio.'
+    : "Claude can't listen to audio, so voice notes are turned into text with OpenAI speech-to-text first (Urdu, English and mixed). That needs an OpenAI key. Costs roughly a cent per minute of audio.";
+  let hint;
+  if (a.voiceKeyHint) hint = `Saved key ${a.voiceKeyHint}. Leave blank to keep it.`;
+  else if (a.serverKey.openai) hint = "Leave blank to use the server's OpenAI key.";
+  else hint = 'From platform.openai.com > API keys.';
+  $('#voiceKeyHint').textContent = hint;
+}
+
+// ---- "Who gets auto-replies" picker ----
+let whoSelected = new Map(); // chat id -> name
+let whoChats = null;         // chats from the last 2 weeks, loaded when needed
+
+const whoMode = () => document.querySelector('input[name=who]:checked')?.value || 'all';
+
+function showWho() {
+  const mode = whoMode();
+  $('#whoPicker').style.display = mode === 'all' ? 'none' : 'flex';
+  if (mode !== 'all' && !whoChats) loadWho();
+  renderWho();
+}
+
+async function loadWho() {
+  $('#whoList').replaceChildren(el('div', { className: 'hint', textContent: 'Loading chats...' }));
+  try { whoChats = await api(`/sessions/${encodeURIComponent(rulesFor)}/contacts`); }
+  catch (err) { whoChats = []; $('#whoList').replaceChildren(el('div', { className: 'msg err', textContent: err.message })); }
+  renderWho();
+}
+
+function renderWho() {
+  const mode = whoMode();
+  const n = whoSelected.size;
+  $('#whoCount').textContent = mode === 'only'
+    ? `${n} selected. Only these contacts get auto-replies. Showing chats from the last 2 weeks.`
+    : `${n} excluded. These contacts never get auto-replies. Showing chats from the last 2 weeks.`;
+  if (!whoChats) return;
+  const q = $('#whoSearch').value.trim().toLowerCase();
+  const recentIds = new Set(whoChats.map((c) => c.id));
+  // Contacts picked earlier whose last chat is older than 2 weeks stay listed so they can be unticked.
+  const older = [...whoSelected].filter(([id]) => !recentIds.has(id)).map(([id, name]) => ({ id, name, number: (/^(\d+)@c\.us$/.exec(id) || [])[1], older: true }));
+  const rows = [...older, ...whoChats].filter((c) => !q || `${c.name} ${c.number || ''}`.toLowerCase().includes(q));
+  if (!rows.length) {
+    $('#whoList').replaceChildren(el('div', { className: 'hint', textContent: q ? 'No chats match.' : 'No chats in the last 2 weeks.' }));
+    return;
+  }
+  $('#whoList').replaceChildren(...rows.map((c) => {
+    const box = el('input', { type: 'checkbox', checked: whoSelected.has(c.id) });
+    box.onchange = () => { box.checked ? whoSelected.set(c.id, c.name) : whoSelected.delete(c.id); renderWho(); };
+    const sub = c.older ? 'selected earlier' : c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleDateString([], { day: 'numeric', month: 'short' }) : '';
+    return el('label', {}, box,
+      el('span', { className: 'nm' }, c.name || 'Unknown', c.number && c.number !== c.name ? el('span', { className: 'sub', textContent: `  +${c.number}` }) : null),
+      el('span', { className: 'sub', textContent: sub }));
+  }));
+}
+
+document.querySelectorAll('input[name=who]').forEach((r) => r.onchange = showWho);
+$('#whoSearch').oninput = renderWho;
+$('#whoReload').onclick = () => { whoChats = null; loadWho(); };
+
+document.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = showMode);
+$('#rProvider').onchange = () => { showProvider(false); showVoiceKeyHint(); };
+$('#rExample').onclick = () => {
+  if ($('#rPrompt').value.trim() && !confirm('Replace what you wrote with the example?')) return;
+  $('#rPrompt').value = EXAMPLE_PROMPT;
+};
+$('#rAddKw').onclick = () => $('#rKeywords').append(kwRow());
+$('#rCancel').onclick = () => $('#rulesDlg').close();
+
+$('#rTestBtn').onclick = async () => {
+  const btn = $('#rTestBtn');
+  const out = $('#rTestOut');
+  btn.disabled = true;
+  out.replaceChildren(el('div', { className: 'hint', textContent: 'Writing a reply...' }));
+  try {
+    const r = await api(`/sessions/${encodeURIComponent(rulesFor)}/ai-test`, { method: 'POST', body: JSON.stringify({ rules: formValues(), message: $('#rTestMsg').value }) });
+    const notes = [];
+    if (r.managerQuestion) notes.push(`Would ask the manager: "${r.managerQuestion}"`);
+    if (r.order) notes.push(`Would record an order: ${r.order.items.map((i) => `${i.quantity} x ${i.name}`).join(', ')}, total ${r.order.total}`);
+    if (r.complaint) notes.push('Would note a complaint in the customer profile');
+    out.replaceChildren(el('div', { className: 'out', textContent: r.reply }), ...notes.map((n) => el('div', { className: 'hint', textContent: n })));
+  } catch (err) {
+    out.replaceChildren(el('div', { className: 'msg err', textContent: err.message }));
+  }
+  btn.disabled = false;
+};
+
+$('#rulesForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('#rMsg').textContent = '';
+  $('#rSave').disabled = true;
+  try {
+    await api(`/sessions/${encodeURIComponent(rulesFor)}/rules`, { method: 'PUT', body: JSON.stringify(formValues()) });
+    $('#rulesDlg').close();
+    lastJson = ''; refresh();
+  } catch (err) { $('#rMsg').textContent = err.message; }
+  $('#rSave').disabled = false;
+};
+
+// ---------------------------------------------------------------------------
+// Customers, orders, questions for the manager
+// ---------------------------------------------------------------------------
+let dataFor = null;
+let dataTab = 'orders';
+const when = (t) => (t ? new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '-');
+const STATUS_LABEL = { confirmed: 'Confirmed', shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled' };
+
+function openData(id) {
+  dataFor = id;
+  $('#dataTitle').textContent = `Customers & orders: ${id}`;
+  showTab(dataTab);
+  $('#dataDlg').showModal();
+}
+$('#dataClose').onclick = () => $('#dataDlg').close();
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+
+async function showTab(tab) {
+  dataTab = tab;
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  const body = $('#dataBody');
+  body.replaceChildren(el('div', { className: 'hint', textContent: 'Loading...' }));
+  if (tab === 'logs') return showLogs();
+  try {
+    const rows = await api(`/sessions/${encodeURIComponent(dataFor)}/${tab}`);
+    const render = { orders: orderItem, customers: customerItem, questions: questionItem }[tab];
+    const emptyText = {
+      orders: 'No orders yet. Orders appear here when a customer confirms one with the AI.',
+      customers: 'No customers yet. Customers appear here after the AI replies to them.',
+      questions: 'No questions yet. Questions appear here when the AI asks the manager for help.',
+    }[tab];
+    body.replaceChildren(...(rows.length ? rows.map(render) : [el('div', { className: 'empty', textContent: emptyText })]));
+  } catch (err) {
+    body.replaceChildren(el('div', { className: 'msg err', textContent: err.message }));
+  }
+}
+
+function orderItem(o) {
+  const status = el('select', {}, ...Object.entries(STATUS_LABEL).map(([v, t]) => el('option', { value: v, textContent: t, selected: v === o.status })));
+  const saved = el('span', { className: 'sub' });
+  status.onchange = async () => {
+    status.disabled = true;
+    try { await api(`/sessions/${encodeURIComponent(dataFor)}/orders/${o.id}`, { method: 'PATCH', body: JSON.stringify({ status: status.value }) }); saved.textContent = 'Saved'; }
+    catch (err) { saved.textContent = err.message; status.value = o.status; }
+    status.disabled = false;
+  };
+  return el('div', { className: 'item' },
+    el('div', { className: 'top' }, el('b', { textContent: `#${o.id} ${o.customer_name || ''}` }), el('span', {}, status, ' ', saved)),
+    el('div', { className: 'sub', textContent: `${when(o.created_at)}${o.phone ? ` · +${o.phone}` : ''}` }),
+    el('ul', {}, ...o.items.map((i) => el('li', { textContent: `${i.quantity} x ${i.name}${i.price ? ` (${i.price})` : ''}` }))),
+    el('div', {}, el('b', { textContent: 'Total: ' }), `${o.total ?? '?'}`),
+    el('div', {}, el('b', { textContent: 'Address: ' }), o.address || '-'),
+    o.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), o.notes) : null);
+}
+
+function customerItem(c) {
+  const p = c.profile || {};
+  const chips = [];
+  if (p.regular_customer || c.order_count > 1) chips.push(el('span', { className: 'chip good', textContent: 'Regular customer' }));
+  if (c.order_count) chips.push(el('span', { className: 'chip', textContent: `${c.order_count} order${c.order_count > 1 ? 's' : ''}` }));
+  if (p.language) chips.push(el('span', { className: 'chip', textContent: p.language }));
+  if (p.complaints?.length) chips.push(el('span', { className: 'chip bad', textContent: `${p.complaints.length} complaint${p.complaints.length > 1 ? 's' : ''}` }));
+  const list = (label, items) => (items?.length ? el('div', {}, el('b', { textContent: `${label}: ` }), items.join('; ')) : null);
+  return el('div', { className: 'item' },
+    el('div', { className: 'top' }, el('b', { textContent: p.name || c.name || 'Unknown' }), el('span', { className: 'sub', textContent: `Last message ${when(c.last_seen)}` })),
+    el('div', { className: 'sub', textContent: [c.phone ? `+${c.phone}` : '', p.alternate_phone ? `alt ${p.alternate_phone}` : ''].filter(Boolean).join(' · ') || 'Number hidden by WhatsApp' }),
+    chips.length ? el('div', { className: 'chips' }, chips) : null,
+    p.address ? el('div', {}, el('b', { textContent: 'Address: ' }), p.address) : null,
+    list('Likes', p.preferences), list("Doesn't like", p.dislikes), list('Complaints', p.complaints),
+    p.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), p.notes) : null,
+    !c.profile_updated_at ? el('div', { className: 'sub', textContent: 'Profile not built yet.' })
+      : el('div', { className: 'sub', textContent: `Profile updated ${when(c.profile_updated_at)}` }));
+}
+
+function questionItem(q) {
+  return el('div', { className: 'item' },
+    el('div', { className: 'top' },
+      el('b', { textContent: `#${q.id} from ${q.customer_name || 'a customer'}` }),
+      el('span', { className: 'pill ' + (q.status === 'open' ? 'qr' : 'ready'), textContent: q.status === 'open' ? 'Waiting' : 'Answered' })),
+    el('div', { className: 'sub', textContent: when(q.created_at) }),
+    el('div', {}, el('b', { textContent: 'Question: ' }), q.question),
+    q.answer ? el('div', {}, el('b', { textContent: 'Manager said: ' }), q.answer) : null,
+    q.reply_sent ? el('div', {}, el('b', { textContent: 'Sent to customer: ' }), q.reply_sent) : null,
+    q.status === 'open' ? answerBox(q) : null);
+}
+
+// Logs: this business's lines, or server-wide lines (startup, database, errors).
+const logView = { server: false, errorsOnly: false, all: false };
+async function showLogs() {
+  const body = $('#dataBody');
+  const scope = el('select', {},
+    el('option', { value: 'biz', textContent: `This business (${dataFor})`, selected: !logView.server }),
+    el('option', { value: 'server', textContent: 'Server (not tied to a business)', selected: logView.server }));
+  const errors = el('input', { type: 'checkbox', checked: logView.errorsOnly });
+  const all = el('input', { type: 'checkbox', checked: logView.all });
+  all.onchange = () => { logView.all = all.checked; showLogs(); };
+  const reload = el('button', { type: 'button', className: 'alt', textContent: 'Refresh' });
+  scope.onchange = () => { logView.server = scope.value === 'server'; showLogs(); };
+  errors.onchange = () => { logView.errorsOnly = errors.checked; showLogs(); };
+  reload.onclick = showLogs;
+  const bar = el('div', { className: 'logbar' }, scope, el('label', { className: 'check small' }, errors, 'Errors only'),
+    el('label', { className: 'check small', title: 'Railway and a local copy share one database' }, all, 'Other servers too'), reload);
+  body.replaceChildren(bar, el('div', { className: 'hint', textContent: 'Loading...' }));
+  try {
+    const path = logView.server ? '/logs' : `/sessions/${encodeURIComponent(dataFor)}/logs`;
+    const rows = await api(`${path}?limit=300${logView.errorsOnly ? '&level=error' : ''}${logView.all ? '&all=1' : ''}`);
+    const list = el('div', { className: 'logs' }, ...rows.map((l) => el('div', { className: `log ${l.level}` },
+      el('span', { className: 'when', textContent: new Date(l.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) }),
+      ...(logView.all ? [el('span', { className: 'when', textContent: l.server || '?' })] : []),
+      el('span', { className: 'msg', textContent: l.message }))));
+    body.replaceChildren(bar,
+      el('div', { className: 'hint', textContent: rows.length ? `Newest first. Showing ${rows.length} lines${logView.all ? ' from all servers' : ' from this server'}; logs are kept for 30 days.` : 'No log lines yet on this server.' }),
+      list);
+  } catch (err) {
+    body.replaceChildren(bar, el('div', { className: 'msg err', textContent: err.message }));
+  }
+}
+
+// Answer a waiting question here; the AI can tidy up tone and grammar before sending.
+function answerBox(q) {
+  const text = el('textarea', { placeholder: 'Your answer, e.g. "nahi, sirf shoes bechte hain abhi"', maxLength: 2000, rows: 2 });
+  const polish = el('input', { type: 'checkbox', checked: true });
+  const btn = el('button', { type: 'button', textContent: 'Send to customer' });
+  const out = el('div', { className: 'msg' });
+  btn.onclick = async () => {
+    if (!text.value.trim()) { out.className = 'msg err'; out.textContent = 'Type an answer first.'; return; }
+    btn.disabled = true; text.disabled = true;
+    out.className = 'msg';
+    out.textContent = polish.checked ? 'The AI is writing the reply and sending it...' : 'Sending...';
+    try {
+      const r = await api(`/sessions/${encodeURIComponent(dataFor)}/questions/${q.id}/answer`, {
+        method: 'POST', body: JSON.stringify({ answer: text.value, polish: polish.checked }),
+      });
+      out.className = 'msg ok';
+      out.textContent = `Sent to ${q.customer_name || 'the customer'}:\n${r.sent}`;
+      setTimeout(() => { if (dataTab === 'questions') showTab('questions'); }, 2500);
+      lastJson = ''; refresh(); // update the "waiting" badge on the card
+    } catch (err) {
+      out.className = 'msg err'; out.textContent = err.message;
+      btn.disabled = false; text.disabled = false;
+    }
+  };
+  return el('div', { className: 'answer' },
+    el('b', { textContent: 'Your answer' }),
+    q.manager_msg_id ? el('div', { className: 'sub', textContent: 'Sent to the manager on WhatsApp too. Whoever answers first, here or there, is sent.' }) : null,
+    text,
+    el('label', { className: 'check small' }, polish, 'Let the AI fix tone and grammar, and reply in the customer\'s language'),
+    el('div', { className: 'row' }, btn),
+    out);
+}
+
+let timer;
+function start() {
+  if (!key) return showLogin();
+  $('#login').hidden = true; $('#app').hidden = false;
+  lastJson = '';
+  refresh();
+  clearInterval(timer);
+  timer = setInterval(refresh, 2000);
+}
+start();
+</script>
+</body>
+</html>
