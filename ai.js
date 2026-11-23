@@ -134,8 +134,50 @@ async function buildProfile(ai, transcript, currentProfile) {
   });
 }
 
-function resolveKey(ai) {
-  return ai.apiKey || process.env[PROVIDERS[ai.provider]?.envKey] || '';
+// ---------------------------------------------------------------------------
+// Usage tracking: every call is reported to a sink (the database) with tokens, time and outcome.
+// ---------------------------------------------------------------------------
+const { AsyncLocalStorage } = require('async_hooks');
+const usageCtx = new AsyncLocalStorage();
+let usageSink = null;
+const withUsage = (ctx, fn) => usageCtx.run(ctx, fn); // ctx: { business, kind? }
+const setUsageSink = (fn) => { usageSink = fn; };
+
+// Prices in USD per 1M tokens, from env. Without them only tokens are shown, never an invented cost.
+const price = (name) => { const v = Number(process.env[name]); return Number.isFinite(v) && process.env[name] !== '' && v >= 0 ? v : null; };
+function costOf(u, voice) {
+  const inP = price(voice ? 'AI_PRICE_VOICE_INPUT_PER_M' : 'AI_PRICE_INPUT_PER_M');
+  const outP = price(voice ? 'AI_PRICE_VOICE_OUTPUT_PER_M' : 'AI_PRICE_OUTPUT_PER_M');
+  if (inP === null || outP === null) return null;
+  const cr = price('AI_PRICE_CACHE_READ_PER_M') ?? inP, cw = price('AI_PRICE_CACHE_WRITE_PER_M') ?? inP;
+  return (u.input * inP + u.cacheRead * cr + u.cacheWrite * cw + u.output * outP) / 1e6;
+}
+const noUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+function report({ kind, provider, model, ms, ok, error, usage, voice }) {
+  if (!usageSink) return;
+  const ctx = usageCtx.getStore() || {};
+  const u = usage || noUsage();
+  try {
+    usageSink({
+      at: new Date(), business: ctx.business || null, kind: ctx.kind || kind, provider, model, ms, ok, error: error ? String(error).slice(0, 300) : null,
+      input_tokens: u.input, output_tokens: u.output, cache_read_tokens: u.cacheRead, cache_write_tokens: u.cacheWrite,
+      cost: ok || u.input || u.output ? costOf(u, voice) : null,
+    });
+  } catch { /* reporting must never break a reply */ }
+}
+
+// Which AI answers customers is a server setting (env), the same for every business:
+//   AI_PROVIDER = anthropic | openai   (default anthropic)
+//   AI_MODEL    = any model name       (default: the provider's default)
+//   ANTHROPIC_API_KEY / OPENAI_API_KEY = the keys
+function serverAi() {
+  const wanted = String(process.env.AI_PROVIDER || 'anthropic').trim().toLowerCase();
+  const provider = PROVIDERS[wanted] ? wanted : 'anthropic';
+  return { provider, model: String(process.env.AI_MODEL || '').trim() || PROVIDERS[provider].defaultModel, label: PROVIDERS[provider].label, envKey: PROVIDERS[provider].envKey };
+}
+
+function resolveKey() {
+  return process.env[serverAi().envKey] || '';
 }
 
 // ---------------------------------------------------------------------------
@@ -144,23 +186,27 @@ function resolveKey(ai) {
 
 const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 
-// Voice-note key: its own key, else the ChatGPT key when replies use ChatGPT, else the server's.
-function voiceKey(ai) {
-  return ai.voiceKey || (ai.provider === 'openai' ? ai.apiKey : '') || process.env.OPENAI_API_KEY || '';
+// Voice notes use OpenAI speech-to-text, so they need OPENAI_API_KEY on the server.
+function voiceKey() {
+  return process.env.OPENAI_API_KEY || '';
 }
 
 // media: whatsapp-web.js MessageMedia { mimetype, data (base64) }. Returns the text, or null.
 async function transcribe(ai, media) {
-  const apiKey = voiceKey(ai);
-  if (!apiKey) throw friendly('No OpenAI key for voice notes. Add one in the AI settings.');
+  const apiKey = voiceKey();
+  if (!apiKey) throw friendly('Voice notes are not set up on this server (missing OPENAI_API_KEY).');
   const mime = (media.mimetype || 'audio/ogg').split(';')[0].trim();
   const ext = { 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'm4a', 'audio/wav': 'wav', 'audio/webm': 'webm' }[mime] || 'ogg';
+  const started = Date.now();
   try {
     const client = new OpenAI({ apiKey, timeout: 60_000, maxRetries: 2 });
     const file = await OpenAI.toFile(Buffer.from(media.data, 'base64'), `voice-note.${ext}`, { type: mime });
     const result = await client.audio.transcriptions.create({ file, model: TRANSCRIBE_MODEL });
+    const u = result.usage ? { input: result.usage.input_tokens || 0, output: result.usage.output_tokens || 0, cacheRead: 0, cacheWrite: 0 } : noUsage();
+    report({ kind: 'voice', provider: 'openai', model: TRANSCRIBE_MODEL, ms: Date.now() - started, ok: true, usage: u, voice: true });
     return result.text?.trim() || null;
   } catch (e) {
+    report({ kind: 'voice', provider: 'openai', model: TRANSCRIBE_MODEL, ms: Date.now() - started, ok: false, error: e.message, voice: true });
     throw explainError(e, 'OpenAI (voice notes)');
   }
 }
@@ -180,21 +226,29 @@ function formatOrder(o) {
 
 // Calls the provider with a JSON schema and returns the parsed object (or null on refusal).
 async function callJSON(ai, { stable, dynamic, messages, schema, schemaName }) {
-  const provider = PROVIDERS[ai.provider];
-  if (!provider) throw friendly(`Unknown AI provider "${ai.provider}".`);
-  const apiKey = resolveKey(ai);
-  if (!apiKey) throw friendly(`No ${provider.label} API key set.`);
+  const { provider: providerId, model } = serverAi();
+  const provider = PROVIDERS[providerId];
+  const apiKey = resolveKey();
+  if (!apiKey) throw friendly(`${provider.label} is not set up on this server (missing ${provider.envKey}).`);
   if (!ai.prompt?.trim()) throw friendly('The AI prompt is empty. Describe the business first.');
-  const model = ai.model || provider.defaultModel;
 
+  const kind = schemaName === 'customer_profile' ? 'profile' : 'reply';
+  const started = Date.now();
+  let usage = noUsage();
   try {
-    const text = ai.provider === 'anthropic'
+    const got = providerId === 'anthropic'
       ? await claudeJSON({ apiKey, model, stable, dynamic, messages, schema })
       : await openaiJSON({ apiKey, model, stable, dynamic, messages, schema, schemaName });
-    if (!text) return null;
-    return JSON.parse(text);
+    usage = got.usage || usage;
+    report({ kind, provider: providerId, model, ms: Date.now() - started, ok: Boolean(got.text), error: got.text ? null : 'The model declined to answer', usage });
+    if (!got.text) return null;
+    return JSON.parse(got.text);
   } catch (e) {
-    if (e instanceof SyntaxError) throw Object.assign(new Error(`${provider.label} returned an unreadable answer.`), { status: 502, friendly: true });
+    if (e instanceof SyntaxError) {
+      report({ kind, provider: providerId, model, ms: Date.now() - started, ok: false, error: 'Unreadable answer', usage });
+      throw Object.assign(new Error(`${provider.label} returned an unreadable answer.`), { status: 502, friendly: true });
+    }
+    if (!e.friendly) report({ kind, provider: providerId, model, ms: Date.now() - started, ok: false, error: e.message, usage });
     throw explainError(e, provider.label);
   }
 }
@@ -223,8 +277,10 @@ async function claudeJSON({ apiKey, model, stable, dynamic, messages, schema }) 
   const response = model.includes('haiku')
     ? await client.messages.create(params)
     : await client.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
-  if (response.stop_reason === 'refusal') return null;
-  return response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const u = response.usage || {};
+  const usage = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
+  if (response.stop_reason === 'refusal') return { text: null, usage };
+  return { text: response.content.filter((b) => b.type === 'text').map((b) => b.text).join(''), usage };
 }
 
 async function openaiJSON({ apiKey, model, stable, dynamic, messages, schema, schemaName }) {
@@ -243,9 +299,12 @@ async function openaiJSON({ apiKey, model, stable, dynamic, messages, schema, sc
       })),
     ],
   });
+  const u = response.usage || {};
+  const cached = u.prompt_tokens_details?.cached_tokens || 0;
+  const usage = { input: Math.max(0, (u.prompt_tokens || 0) - cached), output: u.completion_tokens || 0, cacheRead: cached, cacheWrite: 0 };
   const msg = response.choices[0]?.message;
-  if (!msg || msg.refusal) return null;
-  return msg.content;
+  if (!msg || msg.refusal) return { text: null, usage };
+  return { text: msg.content, usage };
 }
 
 function friendly(message) {
@@ -268,4 +327,4 @@ function explainError(e, label) {
   return Object.assign(new Error(msg), { status: 502, friendly: true });
 }
 
-module.exports = { replyTurn, buildProfile, transcribe, voiceKey, resolveKey, PROVIDERS, REPLY_SCHEMA, PROFILE_SCHEMA };
+module.exports = { replyTurn, buildProfile, transcribe, voiceKey, resolveKey, serverAi, withUsage, setUsageSink, PROVIDERS, REPLY_SCHEMA, PROFILE_SCHEMA };

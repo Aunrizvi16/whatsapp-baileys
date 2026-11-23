@@ -3,211 +3,553 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WhatsApp Sessions (Baileys)</title>
+<title>WhatsApp Sessions</title>
+<script>document.documentElement.dataset.theme = (() => { try { return localStorage.getItem("theme"); } catch {} })() || "dark";</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { --navy:#001D38; --blue:#0075E2; --grey:#6F879F; --line:#dfe6ee; --bg:#f5f8fb; --ok:#1f9d55; --warn:#c77700; --bad:#c62828; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family:'League Spartan', Inter, system-ui, sans-serif; background:var(--bg); color:var(--navy); }
-  .toolbar { display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
-  header { background:var(--navy); color:#fff; padding:18px 16px; }
-  header h1 { margin:0 auto; max-width:1000px; font-size:22px; font-weight:700; }
-  main { max-width:1000px; margin:0 auto; padding:20px 16px 60px; }
-  .bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-  input, select, button, textarea { font:inherit; font-size:16px; border-radius:8px; }
-  input, select, textarea { padding:10px 12px; border:1px solid var(--line); background:#fff; color:var(--navy); }
-  .bar input { flex:1; min-width:180px; }
-  button { padding:10px 14px; background:var(--blue); color:#fff; border:none; cursor:pointer; font-weight:500; }
-  button.ghost { background:#fff; color:var(--bad); border:1px solid var(--line); }
-  button.alt { background:#fff; color:var(--blue); border:1px solid var(--blue); }
-  button.link { background:none; color:var(--blue); padding:4px; text-decoration:underline; }
-  button.link.danger { color:var(--bad); font-size:14px; align-self:flex-start; }
-  button:disabled { opacity:.5; cursor:default; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-top:8px; }
-  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  /* ---- Design tokens (Linear-style: dark first, light on request) ---- */
+  :root, :root[data-theme="dark"] {
+    --bg:#08090a; --side:#08090a; --surface:#0f1011; --panel:#141516; --panel-2:#1a1b1e; --hover:rgba(255,255,255,.045); --active:rgba(255,255,255,.075);
+    --line:#1f2023; --line-2:#2c2d31;
+    --text:#ffffff; --text-2:#d0d6e0; --muted:#8a8f98; --faint:#62666d;
+    --accent:#ffffff; --accent-2:#e3e5e8; --on-accent:#08090a; --accent-soft:rgba(255,255,255,.07); --accent-ring:rgba(255,255,255,.22);
+    --ok:#4ccf7f; --warn:#e0a52c; --bad:#ef5b57; --info:#4c9aff;
+    --ok-bg:rgba(76,207,127,.13); --warn-bg:rgba(224,165,44,.13); --bad-bg:rgba(239,91,87,.12);
+    --shadow:0 12px 40px rgba(0,0,0,.6), 0 0 0 1px var(--line-2);
+    color-scheme:dark;
+  }
+  :root[data-theme="light"] {
+    --bg:#f1f2f4; --side:#f1f2f4; --surface:#ffffff; --panel:#ffffff; --panel-2:#f4f5f7; --hover:rgba(8,9,10,.04); --active:rgba(8,9,10,.07);
+    --line:#e6e8eb; --line-2:#d3d7dc;
+    --text:#08090a; --text-2:#3b3f45; --muted:#6f737b; --faint:#9ca0a8;
+    --accent:#08090a; --accent-2:#2a2c30; --on-accent:#ffffff; --accent-soft:rgba(8,9,10,.06); --accent-ring:rgba(8,9,10,.18);
+    --ok:#1f9d57; --warn:#a96d00; --bad:#d23f3f; --info:#2b74d1;
+    --ok-bg:rgba(31,157,87,.10); --warn-bg:rgba(169,109,0,.10); --bad-bg:rgba(210,63,63,.08);
+    --shadow:0 12px 40px rgba(8,9,10,.16), 0 0 0 1px var(--line-2);
+    color-scheme:light;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-font-smoothing:antialiased; }
+  body { margin:0; font:400 14px/1.5 'Hanken Grotesk', -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text-2); }
+  [hidden] { display:none !important; }
+  h1, h2, h3, strong, b { color:var(--text); font-weight:600; letter-spacing:-.01em; }
+  ::selection { background:var(--accent-ring); }
+  ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:99px; border:2px solid transparent; background-clip:padding-box; }
+  kbd.onacc { color:inherit; border-color:color-mix(in srgb, currentColor 40%, transparent); opacity:.8; }
+  kbd { font:500 11px/1 'Hanken Grotesk', sans-serif; color:var(--muted); border:1px solid var(--line-2); border-radius:4px; padding:2px 5px; }
+
+  /* ---- Controls ---- */
+  input, select, button, textarea { font:inherit; font-size:14px; border-radius:8px; }
+  input, select, textarea { height:34px; padding:0 12px; border:1px solid var(--line-2); background:var(--panel-2); color:var(--text); outline:none; transition:border-color .12s, box-shadow .12s; }
+  textarea { height:auto; min-height:70px; padding:8px 10px; resize:vertical; line-height:1.5; }
+  input::placeholder, textarea::placeholder { color:var(--faint); }
+  input:focus, select:focus, textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+  input[type=checkbox], input[type=radio] { height:auto; accent-color:var(--accent); }
+  button { height:34px; padding:0 14px; background:var(--accent); color:var(--on-accent); border:1px solid transparent; cursor:pointer; font-weight:500; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap; transition:background .12s, border-color .12s, color .12s; }
+  button:hover { background:var(--accent-2); }
+  button:focus-visible { outline:2px solid var(--accent-2); outline-offset:2px; }
+  button.alt { background:var(--active); color:var(--text); border-color:transparent; }
+  button.alt:hover { background:var(--line-2); }
+  button.ghost { background:transparent; color:var(--bad); border-color:var(--line-2); }
+  button.ghost:hover { background:var(--bad-bg); border-color:var(--bad); }
+  button.link { background:none; color:var(--accent); padding:0 2px; height:auto; text-decoration:none; font-weight:500; }
+  button.link:hover { background:none; text-decoration:underline; }
+  button.link.danger { color:var(--bad); font-size:12px; align-self:flex-start; opacity:.85; margin-top:2px; }
+  button:disabled { opacity:.45; cursor:default; pointer-events:none; }
+  .row { display:flex; gap:8px; } .row input { flex:1; min-width:0; }
+  .msg { font-size:13px; min-height:1em; white-space:pre-wrap; } .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  .hint, .sub { color:var(--muted); font-size:12.5px; line-height:1.5; font-weight:400; }
+  .badge { background:var(--accent); color:var(--on-accent); border-radius:99px; padding:0 6px; font-size:11px; line-height:16px; font-weight:600; min-width:16px; text-align:center; }
+  .empty { color:var(--muted); text-align:center; padding:72px 16px; border:1px dashed var(--line-2); border-radius:12px; grid-column:1 / -1; }
+  .empty b { display:block; color:var(--text); font-size:15px; margin-bottom:4px; }
+
+  /* ---- App shell ---- */
+  .shell { display:grid; grid-template-columns:240px 1fr; min-height:100vh; }
+  .shell:has(#me[hidden]) { grid-template-columns:1fr; }
+  .side { position:sticky; top:0; height:100vh; background:var(--side); display:flex; flex-direction:column; padding:14px 10px 12px; gap:2px; }
+  .ws { display:flex; align-items:center; gap:10px; padding:2px 6px 16px; color:var(--text); font-weight:600; font-size:17px; letter-spacing:-.02em; }
+  .ws .plus { margin-left:auto; width:36px; height:36px; padding:0; border-radius:50%; background:var(--text); color:var(--bg); } .ws .plus:hover { background:var(--text-2); }
+  .ws .plus svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; }
+  .logo { width:24px; height:24px; border-radius:7px; background:var(--text); display:grid; place-items:center; color:var(--bg); font-size:13px; font-weight:700; flex:none; }
+  .nav { width:100%; justify-content:flex-start; height:32px; background:transparent; color:var(--text-2); font-weight:400; font-size:14.5px; padding:0 12px; gap:10px; border:none; border-radius:10px; }
+  .nav:hover { background:var(--hover); color:var(--text); } .nav.on { background:var(--active); color:var(--text); font-weight:500; }
+  .nav .badge { margin-left:auto; }
+  .nav svg, .iconbtn svg { width:16px; height:16px; flex:none; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .spacer { flex:1; }
+  .acct { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding:8px; border-radius:12px; border:1px solid var(--line); background:var(--panel); }
+  .avatar { width:32px; height:32px; border-radius:50%; background:var(--text); color:var(--bg); display:grid; place-items:center; font-size:14px; font-weight:600; flex:none; }
+  .acct .who1 { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.25; }
+  .acct #meName { color:var(--text); font-weight:500; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .role { white-space:nowrap; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+  .role.super_admin { color:#f2b84c; } .role.admin { color:var(--info); }
+  .iconbtn { width:28px; height:28px; padding:0; background:transparent; color:var(--muted); border:none; }
+  .iconbtn:hover { background:var(--hover); color:var(--text); }
+  .acctbtns { display:flex; gap:2px; width:100%; padding-top:6px; border-top:1px solid var(--line); }
+  .acctbtns .iconbtn:last-child { margin-left:auto; }
+  main { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; margin:8px 8px 8px 0; min-height:calc(100vh - 16px); }
+  .shell:has(#me[hidden]) main { background:transparent; border:none; border-radius:0; margin:0; min-height:100vh; }
+  .top-bar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px; padding:0 24px; height:68px; background:color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter:blur(10px); border-radius:12px 12px 0 0; }
+  .top-bar h1 { margin:0; font-size:19px; font-weight:500; letter-spacing:-.025em; }
+  .tile { width:36px; height:36px; border-radius:10px; background:var(--text); display:grid; place-items:center; flex:none; } .tile svg { width:18px; height:18px; stroke:var(--bg); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .top-bar .count { color:var(--muted); font-size:13px; background:var(--active); border-radius:99px; padding:1px 9px; }
+  .top-bar .grow { flex:1; }
+  .top-bar button { height:34px; font-size:14px; }
+  #allMsg { color:var(--muted); font-size:12.5px; }
+  .content { padding:0 24px 32px; max-width:1280px; }
+  .toolbar2 { display:flex; align-items:center; gap:4px; padding:4px 0 12px; flex-wrap:wrap; }
+  .toolbar2 button.f { height:32px; background:transparent; color:var(--muted); font-weight:400; padding:0 10px; }
+  .toolbar2 button.f:hover { background:var(--hover); color:var(--text); } .toolbar2 button.f.on { background:var(--active); color:var(--text); font-weight:500; }
+  .toolbar2 .grow { flex:1; } .toolbar2 input { height:32px; width:220px; max-width:100%; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:18px; }
+  .stat { padding:12px 16px; display:flex; flex-direction:column; gap:6px; border-right:1px solid var(--line); min-width:0; } .stat:last-child { border-right:none; }
+  .stat .lbl { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); } .stat .lbl i { width:8px; height:8px; border-radius:50%; background:var(--faint); }
+  .stat .val { font-size:22px; font-weight:500; color:var(--text); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .stat.ok .lbl i { background:var(--ok); } .stat.warn .lbl i { background:var(--warn); } .stat.bad .lbl i { background:var(--bad); }
+  @media (max-width:640px) { .stats { grid-template-columns:repeat(2, 1fr); } .stat:nth-child(2) { border-right:none; } .stat:nth-child(-n+2) { border-bottom:1px solid var(--line); } }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; align-items:start; }
+
+  /* ---- Sign in ---- */
+  #login { max-width:360px; margin:12vh auto 0; padding:0 16px; display:flex; flex-direction:column; gap:18px; }
+  #login .brand { display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; }
+  #login .brand .logo { width:44px; height:44px; border-radius:13px; font-size:22px; }
+  #login h2 { margin:0; font-size:20px; letter-spacing:-.01em; }
+  .authTabs { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; }
+  .authTabs button { background:transparent; color:var(--muted); height:28px; }
+  .authTabs button:hover { background:var(--hover); }
+  .authTabs button.on { background:var(--active); color:var(--text); }
+  #authForm { display:flex; flex-direction:column; gap:10px; }
+  #authForm input { height:40px; }
+  #authForm button { height:40px; margin-top:4px; }
+  #loginMsg { text-align:center; }
+
+  /* ---- Business card ---- */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:12px; transition:border-color .15s; }
+  .card:hover { border-color:var(--line-2); }
   .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .name { font-weight:700; font-size:18px; word-break:break-all; }
-  .pill { font-size:13px; padding:3px 10px; border-radius:99px; color:#fff; background:var(--grey); white-space:nowrap; }
-  .pill.ready { background:var(--ok); }
-  .pill.qr, .pill.code, .pill.retrying, .pill.requesting_code { background:var(--warn); }
-  .pill.error, .pill.auth_failure { background:var(--bad); }
-  .meta { color:var(--grey); font-size:15px; }
-  .stage { display:flex; flex-direction:column; gap:6px; }
-  .stage .line { display:flex; justify-content:space-between; gap:8px; font-size:15px; }
-  .stage .line span:last-child { color:var(--grey); font-variant-numeric:tabular-nums; }
-  .progress { height:6px; background:var(--line); border-radius:99px; overflow:hidden; }
-  .progress div { height:100%; background:var(--blue); transition:width .4s; }
+  .name { font-weight:600; font-size:15px; color:var(--text); word-break:break-all; letter-spacing:-.01em; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; padding:2px 8px 2px 7px; border-radius:99px; color:var(--muted); background:var(--panel-2); border:1px solid var(--line); white-space:nowrap; }
+  .pill::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--faint); }
+  .pill.ready { color:var(--ok); background:var(--ok-bg); border-color:transparent; } .pill.ready::before { background:var(--ok); }
+  .pill.qr, .pill.code, .pill.retrying, .pill.requesting_code, .pill.starting, .pill.restarting { color:var(--warn); background:var(--warn-bg); border-color:transparent; }
+  .pill.qr::before, .pill.code::before, .pill.retrying::before, .pill.requesting_code::before, .pill.starting::before, .pill.restarting::before { background:var(--warn); }
+  .pill.error, .pill.auth_failure { color:var(--bad); background:var(--bad-bg); border-color:transparent; } .pill.error::before, .pill.auth_failure::before { background:var(--bad); }
+  .meta { color:var(--muted); font-size:13px; margin-top:-6px; }
+  .stage { display:flex; flex-direction:column; gap:8px; }
+  .stage .line { display:flex; justify-content:space-between; gap:8px; font-size:13px; }
+  .stage .line span:last-child { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .progress { height:3px; background:var(--line); border-radius:99px; overflow:hidden; }
+  .progress div { height:100%; background:var(--accent); transition:width .4s; border-radius:99px; }
   .progress.busy div { width:35%; animation:slide 1.4s ease-in-out infinite; }
   @keyframes slide { from { margin-left:-35%; } to { margin-left:100%; } }
-  [hidden] { display:none !important; } /* without this, display:flex below overrides "hidden" */
-  .slow { background:#fff7e6; border:1px solid #f3d9a4; border-radius:8px; padding:10px; font-size:14px; display:flex; flex-direction:column; gap:8px; }
-  .qr img { width:100%; max-width:260px; display:block; margin:0 auto; }
-  .qr p { text-align:center; color:var(--grey); margin:6px 0 0; font-size:14px; }
-  .code { text-align:center; } .code b { display:block; font-size:36px; letter-spacing:4px; margin:4px 0; }
-  .code ol { text-align:left; color:var(--grey); font-size:15px; margin:8px 0 0; padding-left:20px; }
-  .row { display:flex; gap:8px; } .row input { flex:1; min-width:0; }
-  form.send { display:flex; flex-direction:column; gap:8px; }
-  .msg { font-size:14px; min-height:1em; white-space:pre-wrap; }
-  .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
-  .auto { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--grey); font-size:15px; }
-  .auto b.on { color:var(--ok); } .auto b.off { color:var(--grey); }
-  .empty { color:var(--grey); text-align:center; padding:40px 0; }
-  #login { max-width:420px; margin:60px auto; }
+  .slow { background:var(--warn-bg); border:1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius:8px; padding:10px 12px; font-size:13px; display:flex; flex-direction:column; gap:6px; color:var(--text-2); }
+  div.qr { background:#fff; border-radius:10px; padding:14px; } .qr img { width:100%; max-width:240px; display:block; margin:0 auto; image-rendering:pixelated; }
+  div.qr p { text-align:center; color:#555; margin:8px 0 0; font-size:12.5px; }
+  div.code { text-align:center; } div.code b { display:block; font-size:30px; letter-spacing:.25em; margin:6px 0; font-variant-numeric:tabular-nums; }
+  div.code ol { text-align:left; color:var(--muted); font-size:13px; margin:8px 0 0; padding-left:18px; }
+  form.send { display:flex; flex-direction:column; gap:8px; padding-top:4px; }
+  .auto { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--muted); font-size:13px; padding-top:12px; border-top:1px solid var(--line); }
+  .auto b.on { color:var(--ok); } .auto b.off { color:var(--muted); font-weight:500; }
+  .auto button { height:26px; font-size:13px; }
+  .web { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--panel-2); }
+  .web .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--ok); box-shadow:0 0 0 3px var(--ok-bg); }
+  .web.warn .dot { background:var(--warn); box-shadow:0 0 0 3px var(--warn-bg); } .web.bad .dot { background:var(--bad); box-shadow:0 0 0 3px var(--bad-bg); }
+  .web.bad { background:var(--bad-bg); } .web.warn { background:var(--warn-bg); }
+  .web .txt { flex:1; min-width:140px; color:var(--text); } .web .sub { display:block; }
+  .web button { height:26px; font-size:12.5px; }
 
-  dialog { border:none; border-radius:14px; padding:0; width:min(680px, calc(100vw - 32px)); max-height:calc(100vh - 32px); color:var(--navy); }
-  dialog::backdrop { background:rgba(0,29,56,.55); }
-  dialog form { display:flex; flex-direction:column; gap:14px; padding:20px; }
-  dialog h2 { margin:0; font-size:20px; }
-  dialog h3 { margin:6px 0 0; font-size:17px; }
-  dialog label { display:flex; flex-direction:column; gap:4px; font-weight:500; }
-  dialog label small, .hint { color:var(--grey); font-weight:400; font-size:14px; }
-  dialog textarea { min-height:70px; resize:vertical; }
+  /* ---- Dialogs ---- */
+  dialog { border:none; border-radius:16px; padding:0; width:min(640px, calc(100vw - 32px)); max-height:calc(100vh - 48px); color:var(--text-2); background:var(--panel); box-shadow:var(--shadow); }
+  dialog[open] { animation:pop .14s ease-out; }
+  @keyframes pop { from { opacity:0; transform:translateY(6px) scale(.985); } to { opacity:1; transform:none; } }
+  dialog::backdrop { background:rgba(0,0,0,.6); backdrop-filter:blur(2px); }
+  dialog.narrow { width:min(440px, calc(100vw - 32px)); }
+  dialog form { display:flex; flex-direction:column; gap:16px; padding:20px; }
+  dialog h2 { margin:0; font-size:16px; letter-spacing:-.01em; }
+  dialog h3 { margin:6px 0 0; font-size:14px; }
+  dialog label, #rulesView label { display:flex; flex-direction:column; gap:6px; font-weight:500; color:var(--text); font-size:13px; }
+  dialog label small, dialog label .hint, #rulesView label small, #rulesView label .hint { color:var(--muted); font-weight:400; font-size:12.5px; }
   #rPrompt { min-height:220px; }
-  .check { flex-direction:row !important; align-items:center; gap:10px; font-size:17px; }
-  .check input { width:20px; height:20px; }
+  #rulesView h2, #rulesView h3 { margin:0; }
+  .check { flex-direction:row !important; align-items:center; gap:10px !important; font-size:14px !important; }
+  .check input { width:16px; height:16px; }
   .modes { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .modes label { flex-direction:row; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; }
-  .modes label:has(input:checked) { border-color:var(--blue); background:#f0f7ff; }
-  .modes input { margin-top:3px; }
-  .nums { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
-  .nums input { min-width:0; }
-  .kw { border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px; }
-  .kw .top { align-items:center; }
-  .test { border:1px dashed var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
-  .test .out { background:#e7f7ee; border-radius:10px; padding:10px 12px; white-space:pre-wrap; }
-  .actions { display:flex; gap:8px; justify-content:flex-end; position:sticky; bottom:0; background:#fff; padding:10px 0 2px; }
-  @media (max-width:520px) { .modes { grid-template-columns:1fr; } }
-
-  .who { display:flex; flex-direction:column; gap:8px; }
+  .modes label { flex-direction:row; gap:10px; align-items:flex-start; border:1px solid var(--line-2); border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .12s, background .12s; }
+  .modes label:hover { background:var(--hover); }
+  .modes label:has(input:checked) { border-color:var(--accent); background:var(--accent-soft); }
+  .modes input { margin-top:3px; } .modes small { color:var(--muted); font-weight:400; }
   .modes.three { grid-template-columns:repeat(3, 1fr); }
-  @media (max-width:520px) { .modes.three { grid-template-columns:1fr; } }
-  .picker { display:flex; flex-direction:column; gap:8px; border:1px solid var(--line); border-radius:10px; padding:10px; }
+  @media (max-width:560px) { .modes, .modes.three { grid-template-columns:1fr; } }
+  .nums { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; } .nums input { min-width:0; }
+  .kw { border:1px solid var(--line); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px; background:var(--panel-2); }
+  .test { border:1px dashed var(--line-2); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .test .out { background:var(--ok-bg); color:var(--text); border-radius:8px; padding:10px 12px; white-space:pre-wrap; }
+  .actions { display:flex; gap:8px; justify-content:flex-end; position:sticky; bottom:0; background:var(--panel); padding:12px 0 0; margin-top:-4px; border-top:1px solid var(--line); }
+  .who { display:flex; flex-direction:column; gap:10px; }
+  .picker { display:flex; flex-direction:column; gap:10px; border:1px solid var(--line); border-radius:8px; padding:12px; background:var(--panel-2); }
   .whoList { max-height:260px; overflow-y:auto; display:flex; flex-direction:column; }
-  .whoList label { flex-direction:row !important; align-items:center; gap:10px; font-weight:400; padding:8px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
-  .whoList label:last-child { border-bottom:none; }
-  .whoList input { width:18px; height:18px; flex:none; }
-  .whoList .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .whoList .sub { color:var(--grey); font-size:13px; white-space:nowrap; }
+  .whoList label { flex-direction:row !important; align-items:center; gap:10px; font-weight:400; padding:7px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .whoList label:last-child { border-bottom:none; } .whoList input { width:16px; height:16px; flex:none; }
+  .whoList .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); } .whoList .sub { white-space:nowrap; }
 
   dialog.wide { width:min(960px, calc(100vw - 32px)); }
-  .dataHead { display:flex; justify-content:space-between; align-items:center; padding:20px 20px 0; }
-  .dataHead h2 { margin:0; font-size:20px; }
-  .tabs { display:flex; gap:6px; padding:14px 20px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  .tabs button { background:none; color:var(--grey); border-radius:8px 8px 0 0; padding:8px 12px; }
-  .tabs button.on { color:var(--navy); box-shadow:inset 0 -3px 0 var(--blue); }
-  #dataBody { padding:16px 20px 20px; display:flex; flex-direction:column; gap:10px; }
-  .item { border:1px solid var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:6px; font-size:15px; }
-  .item .top b { font-size:16px; }
-  .item .sub { color:var(--grey); font-size:14px; }
-  .item ul { margin:0; padding-left:18px; }
-  .item select { padding:6px 8px; font-size:15px; }
+  .dataHead { display:flex; justify-content:space-between; align-items:center; padding:16px 20px 0; gap:12px; }
+  .dataHead h2 { margin:0; }
+  .tabs { display:flex; gap:2px; padding:12px 14px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .tabs button { background:none; color:var(--muted); border-radius:6px 6px 0 0; height:32px; padding:0 12px; }
+  .tabs button:hover { color:var(--text); background:var(--hover); }
+  .tabs button.on { color:var(--text); box-shadow:inset 0 -2px 0 var(--accent); }
+  #dataBody { padding:16px 20px 20px; display:flex; flex-direction:column; gap:8px; overflow:auto; max-height:calc(100vh - 190px); }
+  .item { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; font-size:13.5px; background:var(--panel-2); }
+  .item .top b { font-size:14px; } .item ul { margin:0; padding-left:18px; } .item select { height:28px; font-size:13px; }
   .chips { display:flex; gap:6px; flex-wrap:wrap; }
-  .chip { font-size:13px; padding:2px 8px; border-radius:99px; background:var(--bg); border:1px solid var(--line); }
-  .chip.good { background:#e7f7ee; border-color:#bfe6cf; } .chip.bad { background:#fdecec; border-color:#f3c2c2; }
-  .logbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .logbar select { padding:6px 8px; font-size:15px; }
-  .logs { font-family:ui-monospace, Consolas, monospace; font-size:13px; border:1px solid var(--line); border-radius:10px; max-height:60vh; overflow:auto; }
-  .log { display:flex; gap:10px; padding:5px 10px; border-bottom:1px solid var(--line); }
-  .log:last-child { border-bottom:none; }
-  .log .when { color:var(--grey); white-space:nowrap; }
-  .log .msg { white-space:pre-wrap; word-break:break-word; }
-  .log.error { background:#fdecec; } .log.warn { background:#fff7e6; }
-  .answer { display:flex; flex-direction:column; gap:8px; margin-top:6px; padding-top:10px; border-top:1px dashed var(--line); }
-  .answer textarea { min-height:60px; resize:vertical; }
-  .check.small { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--grey); cursor:pointer; }
-  .check.small input { width:18px; height:18px; }
-  .web { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:14px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
-  .web .dot { width:10px; height:10px; border-radius:50%; flex:none; background:var(--ok); }
-  .web.warn .dot { background:var(--warn); } .web.bad .dot { background:var(--bad); }
-  .web.bad { background:#fdecec; } .web.warn { background:#fff7e6; }
-  .web .txt { flex:1; min-width:150px; }
-  .web .sub { color:var(--grey); font-size:13px; display:block; }
-  .web button { padding:6px 10px; font-size:14px; }
-  .badge { background:var(--warn); color:#fff; border-radius:99px; padding:1px 8px; font-size:13px; margin-left:6px; }
+  .chip { font-size:12px; padding:1px 8px; border-radius:99px; background:var(--panel); border:1px solid var(--line-2); color:var(--text-2); }
+  .chip.good { background:var(--ok-bg); border-color:transparent; color:var(--ok); } .chip.bad { background:var(--bad-bg); border-color:transparent; color:var(--bad); }
+  .logbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; } .logbar select { height:28px; font-size:13px; }
+  .logs { font-family:ui-monospace, 'SF Mono', Menlo, monospace; font-size:12px; border:1px solid var(--line); border-radius:8px; max-height:60vh; overflow:auto; background:var(--bg); }
+  .log { display:flex; gap:10px; padding:4px 10px; border-bottom:1px solid var(--line); } .log:last-child { border-bottom:none; }
+  .log .when { color:var(--faint); white-space:nowrap; } .log .msg { white-space:pre-wrap; word-break:break-word; }
+  .log.error { background:var(--bad-bg); } .log.warn { background:var(--warn-bg); }
+  .answer { display:flex; flex-direction:column; gap:8px; margin-top:6px; padding-top:10px; border-top:1px dashed var(--line-2); }
+  .check.small { display:flex; align-items:center; gap:8px; font-size:12.5px !important; color:var(--muted); cursor:pointer; font-weight:400; }
+  .urow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--panel-2); }
+  .urow .who2 { flex:1; min-width:200px; display:flex; flex-direction:column; line-height:1.35; } .urow .who2 b { font-size:14px; } .urow .who2 small { color:var(--muted); font-size:12.5px; }
+  .urow button { height:26px; font-size:12.5px; }
+  .st { font-size:11.5px; padding:1px 8px; border-radius:99px; font-weight:500; background:var(--panel); color:var(--muted); border:1px solid var(--line-2); }
+  .st.active { color:var(--ok); background:var(--ok-bg); border-color:transparent; } .st.pending { color:var(--warn); background:var(--warn-bg); border-color:transparent; } .st.disabled { color:var(--bad); background:var(--bad-bg); border-color:transparent; }
+
+  /* ---- Business summary card ---- */
+  .grid { grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
+  .bcard { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:14px; cursor:pointer; transition:border-color .15s, background .15s; }
+  .bcard:hover { border-color:var(--line-2); background:color-mix(in srgb, var(--panel) 92%, var(--text) 8%); }
+  .bhead { display:flex; align-items:center; gap:12px; }
+  .bhead .avatar { width:38px; height:38px; font-size:16px; }
+  .btitle { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.3; }
+  .btitle b { font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .btitle small { color:var(--muted); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bcard .note { font-size:13px; color:var(--text-2); background:var(--panel-2); border-radius:8px; padding:8px 10px; }
+  .codeInline { letter-spacing:.15em; font-variant-numeric:tabular-nums; }
+  .kvs { display:flex; flex-direction:column; border-top:1px solid var(--line); }
+  .kv { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .kv:last-child { border-bottom:none; } .kv .k { color:var(--muted); } .kv .v { color:var(--text); text-align:right; }
+  .kv .v.on { color:var(--ok); } .kv .v.warn { color:var(--warn); } .kv .v.bad { color:var(--bad); }
+  .bactions { display:flex; gap:8px; } .bactions button { flex:1; }
+  .conn { display:flex; flex-direction:column; gap:10px; max-width:520px; margin-bottom:16px; }
+  .conn .meta { margin:0; }
+
+  /* ---- Business page (auto-replies editor) ---- */
+  #rulesView { min-height:calc(100vh - 18px); display:flex; flex-direction:column; }
+  .rv-top { position:sticky; top:0; z-index:6; display:flex; align-items:stretch; padding:0 12px 0 12px; height:44px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter:blur(10px); border-radius:12px 12px 0 0; }
+  .rv-top .grow { flex:1; } .rv-top .iconbtn { align-self:center; }
+  .dtabs { display:flex; gap:4px; }
+  .dtabs button { background:none; color:var(--muted); border-radius:0; height:44px; padding:0 10px; font-weight:500; display:inline-flex; align-items:center; gap:8px; }
+  .dtabs button:hover { color:var(--text); background:var(--hover); } .dtabs button.on { color:var(--text); box-shadow:inset 0 -2px 0 var(--text); }
+  .dtabs button svg, .rv-row .k svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+  .rv-cols { display:grid; grid-template-columns:minmax(0,1fr) 340px; flex:1; }
+  .rv-main { padding:16px 32px 0; min-width:0; width:100%; max-width:900px; display:flex; flex-direction:column; }
+  .rv-side { border-left:1px solid var(--line); padding:14px 18px; display:flex; flex-direction:column; gap:6px; }
+  .rv-side .alt { margin-top:8px; }
+  .rv-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .avatar.big { width:40px; height:40px; font-size:17px; }
+  .rv-head h1 { margin:0; font-size:20px; font-weight:500; letter-spacing:-.025em; word-break:break-all; line-height:1.2; }
+  .rv-sub { display:flex; align-items:center; gap:8px; margin-top:2px; }
+  .rv-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:26px; }
+  .rv-card { border:1px solid var(--line); border-radius:12px; padding:12px 16px; background:var(--panel); }
+  .rv-card .l { font-size:12.5px; color:var(--muted); } .rv-card .v { font-size:16px; color:var(--text); margin-top:4px; font-weight:500; }
+  .rv-row { display:grid; grid-template-columns:120px minmax(0,1fr); gap:8px; align-items:center; padding:5px 0; font-size:13.5px; }
+  .rv-row .k { display:flex; gap:10px; align-items:center; color:var(--muted); } .rv-row .val { color:var(--text); overflow-wrap:anywhere; } .rv-row .val.dim { color:var(--faint); }
+  #rulesForm { display:flex; flex-direction:column; gap:12px; flex:1; padding-bottom:12px; }
+  #rulesView label, #rulesView .who, #rulesView .picker { gap:4px; }
+  #rulesView .modes label { flex-direction:row; align-items:center; gap:8px; padding:7px 12px; }
+  #rulesView .modes label b { font-weight:500; }
+  #rulesView .modes { gap:6px; }
+  #aiSection > *, #fixedSection > * { flex:1 1 100%; min-width:0; }
+  #aiSection > .picker { flex:1 1 calc(50% - 6px); }
+  #rulesView .nums { gap:10px; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); } #rulesView .nums label { justify-content:flex-end; }
+  #rulesView textarea { min-height:60px; } #rulesView #rPrompt { min-height:170px; }
+  #rulesView .picker { padding:8px 12px; }
+  #rulesForm .dfoot { position:sticky; bottom:0; margin:auto -32px 0; padding:8px 32px; border-top:1px solid var(--line); background:var(--surface); display:flex; align-items:center; gap:8px; }
+  #rulesForm .dfoot .msg { flex:1; }
+  #rulesForm[data-tab="replies"] [data-pane]:not([data-pane="replies"]),
+  #rulesForm[data-tab="features"] [data-pane]:not([data-pane="features"]),
+  #rulesForm[data-tab="audience"] [data-pane]:not([data-pane="audience"]) { display:none !important; }
+  input.sw { appearance:none; -webkit-appearance:none; width:34px; height:20px; padding:0; border:none; border-radius:99px; background:var(--line-2); position:relative; cursor:pointer; flex:none; transition:background .15s; }
+  input.sw::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--text-2); transition:transform .15s, background .15s; }
+  input.sw:checked { background:var(--ok); } input.sw:checked::after { transform:translateX(14px); background:#fff; }
+  input.sw:disabled { opacity:.5; cursor:default; } input.sw:focus-visible { outline:2px solid var(--accent-2); outline-offset:2px; }
+  .swrow { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--text); font-weight:500; cursor:pointer; }
+  .kv .v.sw-v { display:flex; align-items:center; gap:10px; justify-content:flex-end; }
+  .enabledrow { justify-content:space-between; padding:8px 12px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+  .enabledrow span { display:flex; flex-direction:column; } .enabledrow small { color:var(--muted); font-weight:400; font-size:12.5px; }
+  /* Toggle switches */
+  #rulesView .check > input[type=checkbox] { appearance:none; -webkit-appearance:none; width:34px !important; height:20px !important; border-radius:99px; background:var(--line-2); position:relative; cursor:pointer; flex:none; transition:background .15s; order:2; margin-left:auto; }
+  #rulesView .check > input[type=checkbox]::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--text-2); transition:transform .15s, background .15s; }
+  #rulesView .check > input[type=checkbox]:checked { background:var(--ok); }
+  #rulesView .check > input[type=checkbox]:checked::after { transform:translateX(14px); background:#fff; }
+  #rulesView .check { justify-content:space-between; }
+  @media (max-width:1000px) {
+    .rv-cols { grid-template-columns:1fr; } .rv-side { border-left:none; border-top:1px solid var(--line); }
+    .rv-main { padding:14px 16px 0; } #rulesForm .dfoot { margin:auto -16px 0; padding:8px 16px; }
+  }
+
+  small:empty, .hint:empty { display:none; }
+  /* ---- Business info: full screen ---- */
+  .promptbar { display:flex; align-items:center; gap:14px; } .promptbar #rPromptCount { margin-left:auto; color:var(--faint); font-variant-numeric:tabular-nums; }
+  #promptField.fs { position:fixed; inset:0; z-index:2000; background:var(--surface); padding:16px 24px 24px; gap:10px; font-size:15px; }
+  #promptField.fs .promptbar { max-width:980px; width:100%; margin:0 auto; }
+  #promptField.fs textarea { flex:1; min-height:0 !important; max-width:980px; width:100%; margin:0 auto; font-size:15px; line-height:1.65; resize:none; padding:16px 18px; }
+  /* ---- Access tab ---- */
+  .accbox { display:flex; flex-direction:column; gap:10px; max-width:520px; }
+  .accsec { margin-bottom:0; } .accform { display:flex; flex-direction:column; gap:10px; }
+  .owner { display:flex; align-items:center; gap:10px; } .owner .ci { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.3; } .owner .ci small { color:var(--muted); }
+  .creds { border:1px solid color-mix(in srgb, var(--ok) 40%, transparent); background:var(--ok-bg); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+  .creds pre { margin:0; padding:10px 12px; background:var(--panel-2); border-radius:8px; font:12.5px/1.6 ui-monospace, 'SF Mono', Menlo, monospace; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--text); }
+  .creds small { color:var(--muted); }
+  /* ---- Usage ---- */
+  .usagepanel .toolbar2 { padding-top:0; }
+  .kpis { margin-bottom:12px; gap:8px; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr)); } .kpis .rv-card { padding:10px 14px; }
+  .rv-card .s { font-size:12px; color:var(--faint); margin-top:2px; }
+  .upanel { border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:12px 14px; margin-bottom:12px; }
+  .uhead { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; } .uhead h3 { margin:0; font-size:14px; }
+  .seg { display:flex; gap:2px; padding:2px; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; }
+  .seg button { height:24px; padding:0 10px; font-size:12.5px; background:transparent; color:var(--muted); } .seg button:hover { background:var(--hover); color:var(--text); } .seg button.on { background:var(--active); color:var(--text); }
+  #uChart svg { width:100%; height:auto; display:block; } #uChart .grid line { stroke:var(--line); } #uChart text { fill:var(--faint); font-size:10px; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:4px; } .legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; }
+  .u-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap:12px; } .u-grid .upanel { margin-bottom:0; }
+  .upanel table.tbl { min-width:0; } .upanel .tablewrap { border:none; background:none; border-radius:0; }
+  .upanel .tbl th { padding:6px 6px; font-size:11.5px; } .upanel .tbl td { padding:6px; font-size:12.5px; } .upanel .tbl td.num, .upanel .tbl th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tbl .err-sub { display:block; color:var(--bad); font-size:12px; max-width:320px; white-space:normal; }
+  /* ---- Searchable dropdown ---- */
+  .combo { position:relative; } .combo input { width:100%; padding-right:30px; }
+  .combo-caret { position:absolute; right:11px; top:6px; color:var(--muted); pointer-events:none; font-size:14px; }
+  .combo-list { position:fixed; z-index:1000; max-height:300px; overflow-y:auto; max-width:min(520px, calc(100vw - 16px)); background:var(--panel); border:1px solid var(--line-2); border-radius:10px; box-shadow:var(--shadow); padding:4px; }
+  .combo-item { display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:8px; cursor:pointer; }
+  .combo-item:hover, .combo-item.on { background:var(--active); }
+  .combo-item .avatar { width:28px; height:28px; font-size:12px; }
+  .combo-item .ci { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.3; }
+  .combo-item .ci b { font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .combo-item .ci small { color:var(--muted); font-size:12px; }
+  .combo-item .ct { color:var(--faint); font-size:12px; }
+  .combo-empty { padding:10px; color:var(--muted); font-size:13px; }
+  .combo-item .ck { color:var(--ok); font-size:13px; margin-left:auto; }
+  .pop-search { position:sticky; top:0; width:calc(100% - 8px); margin:4px; height:30px; font-size:13px; }
+  .ddwrap { display:block; } .ddwrap.auto { display:inline-block; } .ddwrap > select { display:none !important; }
+  .dd { width:100%; height:34px; padding:0 10px 0 12px; justify-content:space-between; gap:8px; background:var(--panel-2); color:var(--text); border:1px solid var(--line-2); font-weight:400; text-align:left; }
+  .dd:hover { background:var(--panel-2); border-color:var(--faint); }
+  .dd[aria-expanded=true], .dd:focus-visible { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); outline:none; }
+  .dd.sm { height:28px; font-size:13px; padding:0 8px 0 10px; }
+  .ddwrap.auto .dd { width:auto; min-width:130px; }
+  .dd-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .dd-label.dim { color:var(--faint); } .dd-caret { color:var(--muted); font-size:14px; flex:none; }
+  /* ---- Data pages ---- */
+  .navlabel { font-size:12px; color:var(--faint); padding:14px 12px 4px; font-weight:500; }
+  .toolbar2 select { width:auto; max-width:200px; height:32px; }
+  .tbl tr.has-more { cursor:pointer; }
+  .tbl tr.expand > td { background:var(--panel-2); padding:14px 16px 16px; }
+  .tbl tr.expand .det { display:flex; flex-direction:column; gap:6px; font-size:13.5px; } .tbl tr.expand ul { margin:0; padding-left:18px; }
+  .tbl td.wrapc { white-space:normal; max-width:380px; }
+  .tbl .two b { display:block; font-size:14px; font-weight:500; line-height:1.3; } .tbl .two small { display:block; color:var(--muted); font-size:12.5px; }
+  .tbl .clip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .tbl select { height:28px; font-size:13px; padding:0 8px; }
+  #dvTable { min-width:0; }
+  #dvTable td, #dvTable th { padding-left:12px; padding-right:12px; }
+  .tbl td.mono { font-family:ui-monospace, 'SF Mono', Menlo, monospace; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
+  #dvTable td.mono { width:100%; }
+  .lv { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); } .lv.error { color:var(--bad); } .lv.warn { color:var(--warn); }
+  tr.logrow.error td { background:var(--bad-bg); } tr.logrow.warn td { background:var(--warn-bg); }
+  .tbl .chips { display:flex; gap:6px; flex-wrap:wrap; }
+
+  /* ---- Users table ---- */
+  .tablewrap { border:1px solid var(--line); border-radius:12px; overflow-x:auto; background:var(--panel); }
+  table.tbl { width:100%; border-collapse:collapse; min-width:760px; }
+  .tbl th { text-align:left; font-size:12px; font-weight:500; color:var(--muted); padding:10px 16px; background:var(--panel-2); border-bottom:1px solid var(--line); white-space:nowrap; }
+  .tbl td { padding:12px 16px; border-bottom:1px solid var(--line); vertical-align:middle; font-size:14px; }
+  .tbl tbody tr:last-child td { border-bottom:none; } .tbl tbody tr:hover td { background:var(--hover); }
+  .tbl .usr { display:flex; align-items:center; gap:12px; min-width:0; } .tbl .usr .avatar { width:30px; height:30px; font-size:13px; }
+  .tbl .usr b { display:block; font-size:14px; line-height:1.3; } .tbl .usr small { color:var(--muted); font-size:12.5px; }
+  .tbl .acts { display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; } .tbl .acts button { height:28px; font-size:13px; padding:0 10px; }
+  .tbl td.dim { color:var(--muted); white-space:nowrap; font-size:13px; }
+  .tbl .role { font-size:11px; }
+  @media (max-width:1100px) { #usersView .tbl th:nth-child(4), #usersView .tbl td:nth-child(4) { display:none; } #usersView table.tbl { min-width:600px; } }
+  .tbl .none td { text-align:center; color:var(--muted); padding:40px 16px; }
+
+  /* ---- Small screens: sidebar becomes a top strip ---- */
+  @media (max-width:820px) {
+    .shell { grid-template-columns:1fr; }
+    main { margin:0; border-radius:0; border-left:none; border-right:none; }
+    .side { position:static; height:auto; flex-direction:row; flex-wrap:wrap; align-items:center; border-right:none; border-bottom:1px solid var(--line); }
+    .ws { padding:4px 8px; } .spacer { display:none; } .nav { width:auto; } .acct { margin-left:auto; padding:4px 6px; } .acct .who1 { display:none; }
+    .top-bar { padding:0 14px; } .content { padding:14px; } .grid { grid-template-columns:1fr; }
+    input, select, textarea { font-size:16px; }
+  }
 </style>
 </head>
 <body>
-<header><h1>WhatsApp Sessions <small style="font-weight:400;opacity:.75">Baileys</small></h1></header>
-<main>
-  <section id="login" hidden>
-    <p>Enter the API key set on the server (<code>API_KEY</code>).</p>
-    <form class="bar" id="loginForm">
-      <input id="keyInput" type="password" placeholder="API key" autocomplete="current-password" required>
-      <button>Unlock</button>
-    </form>
-    <div class="msg err" id="loginMsg"></div>
-  </section>
-
-  <section id="app" hidden>
-    <form class="bar" id="addForm">
-      <input id="newId" placeholder="Business name, e.g. acme-store" pattern="[a-zA-Z0-9_-]{1,40}" title="Letters, numbers, - or _" required>
-      <input id="newPhone" placeholder="Phone for code login (optional), e.g. 923001234567" inputmode="tel">
-      <button>Connect WhatsApp</button>
-    </form>
-    <div class="msg err" id="addMsg"></div>
-    <div class="toolbar">
-      <span class="msg" id="allMsg"></span>
-      <button type="button" class="alt" id="restartAll" title="Reconnect every business from its saved login">Reload everything</button>
+<div class="shell">
+  <aside class="side" id="me" hidden>
+    <div class="ws"><span class="logo">W</span><span>sessions</span><button type="button" class="plus" id="sideNew" title="New business (C)"><svg viewBox="0 0 18 18"><path d="M9 3v12M3 9h12"/></svg></button></div>
+    <button type="button" class="nav on" id="navBiz" data-view="biz"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6.5h12"/></svg>Businesses</button>
+    <div class="navlabel">Data</div>
+    <button type="button" class="nav" data-view="orders"><svg viewBox="0 0 16 16"><path d="M3 4.5h10l-1 8H4zM5.5 4.5V4a2.5 2.5 0 0 1 5 0v.5"/></svg>Orders</button>
+    <button type="button" class="nav" data-view="customers"><svg viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.2"/><path d="M2 13c.5-2 2-3 4-3s3.5 1 4 3M11 4.5a2 2 0 0 1 0 3.8M12.5 10c.9.5 1.4 1.4 1.5 3"/></svg>Customers</button>
+    <button type="button" class="nav" data-view="questions"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M6.5 6.3a1.6 1.6 0 1 1 2.4 1.4c-.6.4-.9.7-.9 1.3M8 11.3v.1"/></svg>Questions<span class="badge" id="qBadge" hidden></span></button>
+    <button type="button" class="nav" data-view="logs"><svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6"/></svg>Logs</button>
+    <button type="button" class="nav" data-view="usage"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V3M13 13V6"/></svg>Usage</button>
+    <div class="navlabel" id="adminLabel" hidden>Admin</div>
+    <button type="button" class="nav" id="usersBtn" data-view="users" hidden><svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 13c.6-2.3 2.5-3.5 5-3.5s4.4 1.2 5 3.5"/></svg>Users<span class="badge" id="pendingBadge" hidden></span></button>
+    <div class="spacer"></div>
+    <div class="acct">
+      <span class="avatar" id="meAvatar"></span>
+      <span class="who1"><span id="meName"></span><span class="role" id="meRole"></span></span>
+      <span class="acctbtns">
+        <button type="button" class="iconbtn" id="themeBtn" title="Switch light / dark"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg></button>
+        <button type="button" class="iconbtn" id="pwBtn" title="Change password"><svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg></button>
+        <button type="button" class="iconbtn" id="signoutBtn" title="Sign out"><svg viewBox="0 0 16 16"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10.5 5l3 3-3 3M13.5 8h-7"/></svg></button>
+      </span>
     </div>
-    <div class="grid" id="list"></div>
-  </section>
-</main>
+  </aside>
 
-<dialog id="rulesDlg">
-  <form id="rulesForm">
-    <h2 id="rulesTitle">Auto-replies</h2>
-    <label class="check"><input type="checkbox" id="rEnabled"> Auto-replies on</label>
+  <main>
+    <section id="login" hidden>
+      <div class="brand"><span class="logo">W</span><h2 id="loginTitle">Log in to WhatsApp Sessions</h2></div>
+      <div class="authTabs">
+        <button type="button" id="tabIn" class="on">Log in</button>
+        <button type="button" id="tabUp">Sign up</button>
+      </div>
+      <form id="authForm">
+        <input id="aName" placeholder="Full name" autocomplete="name" maxlength="80" hidden>
+        <input id="aEmail" type="email" placeholder="Email" autocomplete="email" required>
+        <input id="aPass" type="password" placeholder="Password" autocomplete="current-password" minlength="10" maxlength="128" required>
+        <small class="hint" id="aHint" hidden>10+ characters. New accounts need admin approval.</small>
+        <button id="aGo">Log in</button>
+      </form>
+      <div class="msg err" id="loginMsg"></div>
+    </section>
+
+    <section id="app" hidden>
+      <div class="top-bar">
+        <span class="tile"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6.5h12"/></svg></span><h1>Businesses</h1><span class="count" id="count"></span>
+        <span class="grow"></span>
+        <span id="allMsg"></span>
+        <button type="button" class="alt" id="restartAll" title="Reconnect every business from its saved login">Reload everything</button>
+        <button type="button" id="newBtn">New business <kbd class="onacc">C</kbd></button>
+      </div>
+      <div class="content">
+        <div class="toolbar2">
+          <button type="button" class="f on" data-f="all">All</button>
+          <button type="button" class="f" data-f="ready">Connected</button>
+          <button type="button" class="f" data-f="attention">Needs attention</button>
+          <span class="grow"></span>
+          <input id="search" type="search" placeholder="Search businesses" autocomplete="off">
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="grid" id="list"></div>
+      </div>
+    </section>
+
+    <section id="usersView" hidden>
+      <div class="top-bar">
+        <span class="tile"><svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 13c.6-2.3 2.5-3.5 5-3.5s4.4 1.2 5 3.5"/></svg></span><h1>Users</h1><span class="count" id="ucount"></span>
+      </div>
+      <div class="content">
+        <div class="toolbar2">
+          <button type="button" class="f on" data-uf="all">All</button>
+          <button type="button" class="f" data-uf="pending" id="ufPending">Pending</button>
+          <button type="button" class="f" data-uf="active">Active</button>
+          <button type="button" class="f" data-uf="disabled">Disabled</button>
+          <span class="grow"></span>
+          <input id="usearch" type="search" placeholder="Search name or email" autocomplete="off">
+        </div>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th>Last login</th><th></th></tr></thead>
+            <tbody id="usersRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section id="dataView" hidden>
+      <div class="top-bar">
+        <span class="tile"><svg viewBox="0 0 16 16" id="dvIcon"></svg></span><h1 id="dvTitle"></h1><span class="count" id="dvCount"></span>
+        <span class="grow"></span>
+        <button type="button" class="alt" id="dvRefresh">Refresh</button>
+      </div>
+      <div class="content">
+        <div class="toolbar2">
+          <span id="dvFilters" style="display:contents"></span>
+          <span class="grow"></span>
+          <label class="check small" id="dvAllWrap" hidden><input type="checkbox" id="dvAll"> Other servers too</label>
+          <select id="dvBiz"></select>
+          <input id="dvSearch" type="search" placeholder="Search" autocomplete="off">
+        </div>
+        <div class="tablewrap"><table class="tbl" id="dvTable"><thead id="dvHead"></thead><tbody id="dvBody"></tbody></table></div>
+        <div class="hint" id="dvNote" style="padding:10px 2px"></div>
+      </div>
+    </section>
+
+    <section id="usageView" hidden>
+      <div class="top-bar">
+        <span class="tile"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V3M13 13V6"/></svg></span><h1>AI usage</h1><span class="count" id="uModel"></span>
+        <span class="grow"></span>
+        <button type="button" class="alt" id="uExport">Export CSV</button>
+        <button type="button" class="alt" id="uRefresh">Refresh</button>
+      </div>
+      <div class="content" id="uPageBody"></div>
+    </section>
+
+    <section id="rulesView" hidden>
+      <div class="rv-top">
+        <div class="dtabs">
+          <button type="button" data-t="connection"><svg viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M5.2 7.2L3.8 8.6a2.4 2.4 0 0 0 3.4 3.4l1.4-1.4M10.8 8.8l1.4-1.4A2.4 2.4 0 0 0 8.8 4l-1.4 1.4"/></svg>Connection</button>
+          <button type="button" class="on" data-t="replies"><svg viewBox="0 0 16 16"><path d="M2.5 4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7l-3 2.5V10.5a2 2 0 0 1-1.5-2z"/></svg>Replies</button>
+          <button type="button" data-t="features"><svg viewBox="0 0 16 16"><path d="M8 2l1.4 3.6L13 7l-3.6 1.4L8 12 6.6 8.4 3 7l3.6-1.4z"/></svg>Features</button>
+          <button type="button" data-t="audience"><svg viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.2"/><path d="M2 13c.5-2 2-3 4-3s3.5 1 4 3M11 4.5a2 2 0 0 1 0 3.8M12.5 10c.9.5 1.4 1.4 1.5 3"/></svg>Audience</button>
+          <button type="button" data-t="usage"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V3M13 13V6"/></svg>Usage</button>
+          <button type="button" data-t="access" id="tabAccess" hidden><svg viewBox="0 0 16 16"><circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.4 8.6L13 3M11 5l1.5 1.5"/></svg>Access</button>
+        </div>
+        <span class="grow"></span>
+        <button type="button" class="iconbtn" id="rClose" title="Back to businesses (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </div>
+      <div class="rv-cols">
+        <div class="rv-main">
+          <div class="rv-head">
+            <span class="avatar big" id="rvAvatar"></span>
+            <div><h1 id="rulesTitle"></h1><div class="rv-sub"><span class="pill" id="rvPill"></span></div></div>
+            <label class="swrow"><span>Auto-replies</span><input type="checkbox" class="sw" id="rvToggle"></label>
+          </div>
+          <div class="msg err" id="rvToggleMsg"></div>
+          <div id="rvConn" hidden></div>
+          <div id="rvUsage" hidden></div>
+          <div id="rvAccess" hidden></div>
+          <form id="rulesForm" data-tab="replies">
+
+    <input type="checkbox" id="rEnabled" hidden>
 
     <div class="modes">
-      <label><input type="radio" name="mode" value="ai"><span><b>AI replies</b><br><small>Claude or ChatGPT writes each reply from your business info.</small></span></label>
-      <label><input type="radio" name="mode" value="rules"><span><b>Fixed replies</b><br><small>Welcome message and keyword answers you write yourself.</small></span></label>
+      <label><input type="radio" name="mode" value="ai"><span><b>AI replies</b></span></label>
+      <label><input type="radio" name="mode" value="rules"><span><b>Fixed replies</b></span></label>
     </div>
 
-    <section id="aiSection" style="display:flex;flex-direction:column;gap:14px">
-      <div class="nums">
-        <label>AI provider
-          <select id="rProvider"><option value="anthropic">Claude (Anthropic)</option><option value="openai">ChatGPT (OpenAI)</option></select>
-        </label>
-        <label>Model
-          <input id="rModel" list="modelList" autocomplete="off">
-          <datalist id="modelList"></datalist>
-        </label>
-      </div>
-      <label>API key
-        <small id="keyHint"></small>
-        <input id="rApiKey" type="password" autocomplete="off" placeholder="Paste API key">
-      </label>
-      <label>About the business (the AI's instructions)
-        <small>Products, prices, delivery, payment, hours, how to take an order, tone. The AI only states facts written here.
-          <button type="button" class="link" id="rExample">Insert example</button></small>
+    <section id="aiSection" style="display:flex;flex-wrap:wrap;gap:12px">
+      <div class="msg err" id="aiSetup" data-pane="replies"></div>
+      <label data-pane="replies" id="promptField">Business info
+        <small class="promptbar"><button type="button" class="link" id="rExample">Insert example</button><button type="button" class="link" id="rExpand">Full screen</button><span id="rPromptCount"></span></small>
         <textarea id="rPrompt" maxlength="20000"></textarea>
       </label>
-      <div class="picker">
+      <div class="picker" data-pane="features">
         <label class="check"><input type="checkbox" id="rImages"> Understand photos</label>
-        <div class="hint">The AI looks at photos customers send: a product they want, a screenshot of your post, a payment receipt, a damaged item. Works with both Claude and ChatGPT, no extra key. The 3 most recent photos in the chat are included, which adds a little to the cost of each reply.</div>
       </div>
-      <div class="picker">
+      <div class="picker" data-pane="features">
         <label class="check"><input type="checkbox" id="rVoice"> Understand voice notes</label>
-        <div class="hint" id="voiceInfo"></div>
-        <label id="voiceKeyRow">OpenAI key for voice notes
-          <small id="voiceKeyHint"></small>
-          <input id="rVoiceKey" type="password" autocomplete="off" placeholder="sk-...">
-        </label>
+        <div class="msg err" id="voiceSetup"></div>
       </div>
-      <label>Manager's WhatsApp number
-        <small>Gets questions the AI can't answer and new-order alerts. The manager replies to the question, and the AI passes the answer on to the customer. Must be a different number from this one. Leave blank to turn off.</small>
+      <label data-pane="features">Manager's WhatsApp number
         <input id="rManager" inputmode="tel" placeholder="e.g. 923001234567">
       </label>
-      <div class="nums">
-        <label>Recent messages the AI reads<input type="number" id="rHistory" min="1" max="50"></label>
-        <label>Update customer profile every (replies)<input type="number" id="rProfileEvery" min="1" max="100"></label>
-        <label>Max AI replies per chat per hour<input type="number" id="rMaxHour" min="1" max="200"></label>
+      <div class="nums" data-pane="features">
+        <label>Messages the AI reads<input type="number" id="rHistory" min="1" max="50"></label>
+        <label>Profile refresh (replies)<input type="number" id="rProfileEvery" min="1" max="100"></label>
+        <label>Max replies per chat / hour<input type="number" id="rMaxHour" min="1" max="200"></label>
       </div>
-      <div class="hint">The first time the AI talks to a customer, it reads their whole chat once and saves a profile (name, address, likes, complaints). After that it only reads the recent messages plus the profile, which is faster and cheaper.</div>
-      <div class="test">
+      <div class="test" data-pane="replies">
         <strong>Test it</strong>
-        <div class="hint">Uses the settings above (even unsaved). Nothing is sent on WhatsApp.</div>
         <div class="row">
           <input id="rTestMsg" placeholder="e.g. kitne ki hai ye shoes? delivery Lahore mein?">
           <button type="button" id="rTestBtn">Test reply</button>
@@ -216,28 +558,26 @@
       </div>
     </section>
 
-    <section id="fixedSection" style="display:flex;flex-direction:column;gap:14px">
-      <label>Welcome message
-        <small>Sent on a customer's first message. Use {name} for their WhatsApp name. Leave blank for none.</small>
+    <section id="fixedSection" style="display:flex;flex-wrap:wrap;gap:12px">
+      <label data-pane="replies">Welcome message
+        <small>Use {name} for their name</small>
         <textarea id="rWelcome" maxlength="2000" placeholder="Hi {name}! Thanks for messaging us. What are you looking for today?"></textarea>
       </label>
-      <div>
+      <div data-pane="replies">
         <strong>Keyword replies</strong>
-        <div class="hint">If a message contains any of the words (comma separated), send that reply. First match wins. Works in any language.</div>
       </div>
-      <div id="rKeywords" style="display:flex;flex-direction:column;gap:10px"></div>
-      <button type="button" class="alt" id="rAddKw">+ Add keyword reply</button>
-      <div class="nums">
+      <div id="rKeywords" data-pane="replies" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="alt" id="rAddKw" data-pane="replies">+ Add keyword reply</button>
+      <div class="nums" data-pane="features">
         <label>Greet again after (hours)<input type="number" id="rWelcomeHours" min="1" max="720"></label>
         <label>Don't repeat a reply for (min)<input type="number" id="rRepeat" min="0" max="1440"></label>
       </div>
     </section>
 
-    <label><span id="fallbackLabel">Reply when nothing matches</span>
-      <small id="fallbackHint">Optional. Leave blank to stay quiet.</small>
+    <label data-pane="replies"><span id="fallbackLabel">Reply when nothing matches</span>
       <textarea id="rFallback" maxlength="2000" placeholder="Thanks! A team member will reply shortly."></textarea>
     </label>
-    <div class="who">
+    <div class="who" data-pane="audience">
       <strong>Who gets auto-replies</strong>
       <div class="modes three">
         <label><input type="radio" name="who" value="all"><span><b>Everyone</b></span></label>
@@ -254,68 +594,220 @@
       </div>
     </div>
 
-    <label>Pause after I reply myself (minutes)
-      <small>When you answer a chat from your phone, the bot stays out of that chat for this long.</small>
+    <label data-pane="audience">Pause after I reply myself (minutes)
       <input type="number" id="rPause" min="0" max="1440">
     </label>
-    <div class="hint">Groups are always ignored. Replies show "typing..." first.</div>
-    <div class="msg err" id="rMsg"></div>
-    <div class="actions">
-      <button type="button" class="ghost" id="rCancel" style="color:var(--navy)">Cancel</button>
-      <button id="rSave">Save</button>
+
+          <div class="dfoot">
+      <div class="msg err" id="rMsg"></div>
+      <button type="button" class="alt" id="rCancel">Cancel</button>
+      <button id="rSave">Save changes</button>
     </div>
+          </form>
+        </div>
+        <aside class="rv-side">
+          <div class="rv-sidehead"><b>Details</b></div>
+          <div id="rvDetails"></div>
+          <button type="button" class="alt" id="rvData">Customers &amp; orders</button>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="addDlg" class="narrow">
+  <form id="addForm">
+    <h2>New business</h2>
+    <label>Name
+      <input id="newId" placeholder="acme-store" pattern="[a-zA-Z0-9_-]{1,40}" title="Letters, numbers, - or _" autocomplete="off" required></label>
+    <label>Phone <small>Optional, for code login</small>
+      <input id="newPhone" placeholder="923001234567" inputmode="tel" autocomplete="off"></label>
+    <div class="msg err" id="addMsg"></div>
+    <div class="actions"><button type="button" class="alt" id="addCancel">Cancel</button><button>Connect WhatsApp</button></div>
   </form>
 </dialog>
 
-<dialog id="dataDlg" class="wide">
-  <div class="dataHead">
-    <h2 id="dataTitle">Customers &amp; orders</h2>
-    <button type="button" class="ghost" id="dataClose" style="color:var(--navy)">Close</button>
-  </div>
-  <div class="tabs" role="tablist">
-    <button type="button" data-tab="orders" class="on">Orders</button>
-    <button type="button" data-tab="customers">Customers</button>
-    <button type="button" data-tab="questions">Questions for manager</button>
-    <button type="button" data-tab="logs">Logs</button>
-  </div>
-  <div id="dataBody"></div>
+<dialog id="pwDlg" class="narrow">
+  <form id="pwForm">
+    <h2>Change password</h2>
+    <label>Current password<input id="pwCur" type="password" autocomplete="current-password" required></label>
+    <label>New password<input id="pwNew" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+    <div class="msg" id="pwMsg"></div>
+    <div class="actions"><button type="button" class="alt" id="pwCancel">Cancel</button><button>Change password</button></div>
+  </form>
 </dialog>
 
 <script>
 const $ = (s) => document.querySelector(s);
-let key = '';
-try { key = localStorage.getItem('apiKey') || ''; } catch {}
+let me = null; // the signed-in user
 const drafts = {};      // half-typed send forms, kept across redraws
 const pairDrafts = {};  // half-typed phone numbers under a QR
 
 async function api(path, opts = {}) {
-  const res = await fetch('/api' + path, { ...opts, headers: { 'content-type': 'application/json', 'x-api-key': key } });
+  const res = await fetch(path.startsWith('/auth') ? path : '/api' + path, { ...opts, headers: { 'content-type': 'application/json' } });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) { showLogin('Wrong API key.'); throw new Error('unauthorized'); }
+  if (res.status === 401 && !path.startsWith('/auth/')) { showLogin('Your session ended. Please log in again.'); throw new Error('unauthorized'); }
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
 
 function showLogin(msg = '') {
-  $('#app').hidden = true; $('#login').hidden = false; $('#loginMsg').textContent = msg;
+  me = null; clearInterval(timer);
+  $('#app').hidden = true; $('#usersView').hidden = true; $('#dataView').hidden = true; $('#usageView').hidden = true; $('#rulesView').hidden = true; $('#me').hidden = true; $('#login').hidden = false; $('#loginMsg').textContent = msg;
 }
 
-$('#loginForm').onsubmit = (e) => {
+let signingUp = false;
+function authMode(up) {
+  signingUp = up;
+  $('#tabIn').className = up ? '' : 'on'; $('#tabUp').className = up ? 'on' : '';
+  $('#aName').hidden = !up; $('#aName').required = up; $('#aHint').hidden = !up;
+  $('#aPass').autocomplete = up ? 'new-password' : 'current-password';
+  $('#aGo').textContent = up ? 'Create account' : 'Log in';
+  $('#loginTitle').textContent = up ? 'Create your account' : 'Log in to WhatsApp Sessions';
+  $('#loginMsg').textContent = ''; $('#loginMsg').className = 'msg err';
+}
+$('#tabIn').onclick = () => authMode(false);
+$('#tabUp').onclick = () => authMode(true);
+
+$('#authForm').onsubmit = async (e) => {
   e.preventDefault();
-  key = $('#keyInput').value.trim();
-  try { localStorage.setItem('apiKey', key); } catch {}
-  start();
+  const out = $('#loginMsg'); out.className = 'msg err'; out.textContent = '';
+  $('#aGo').disabled = true;
+  try {
+    const body = { email: $('#aEmail').value.trim(), password: $('#aPass').value };
+    if (signingUp) {
+      const r = await api('/auth/signup', { method: 'POST', body: JSON.stringify({ ...body, name: $('#aName').value.trim() }) });
+      $('#aPass').value = ''; authMode(false); out.className = 'msg ok'; out.textContent = r.message;
+    } else {
+      me = await api('/auth/signin', { method: 'POST', body: JSON.stringify(body) });
+      $('#aPass').value = '';
+      start();
+    }
+  } catch (err) { out.textContent = err.message; }
+  $('#aGo').disabled = false;
 };
+
+$('#signoutBtn').onclick = async () => {
+  await api('/auth/signout', { method: 'POST' }).catch(() => {});
+  showLogin();
+};
+
+$('#pwBtn').onclick = () => { $('#pwForm').reset(); $('#pwMsg').textContent = ''; $('#pwDlg').showModal(); };
+$('#pwCancel').onclick = () => $('#pwDlg').close();
+$('#pwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const out = $('#pwMsg'); out.className = 'msg err'; out.textContent = '';
+  try {
+    await api('/auth/password', { method: 'POST', body: JSON.stringify({ current: $('#pwCur').value, next: $('#pwNew').value }) });
+    $('#pwDlg').close();
+  } catch (err) { out.textContent = err.message; }
+};
+
+// ---- Views: Businesses / Users ----
+let view = 'biz';
+const isAdminUser = () => me && (me.role === 'admin' || me.role === 'super_admin');
+function setView(v) {
+  if (!me) return;
+  if (v === 'users' && !isAdminUser()) v = 'biz';
+  view = v;
+  $('#rulesView').hidden = true;
+  $('#app').hidden = v !== 'biz';
+  $('#usersView').hidden = v !== 'users';
+  $('#dataView').hidden = !DATA_VIEWS.includes(v);
+  $('#usageView').hidden = v !== 'usage';
+  document.querySelectorAll('.nav[data-view]').forEach((n) => n.classList.toggle('on', n.dataset.view === v));
+  window.scrollTo(0, 0);
+  if (v === 'users') loadUsers();
+  if (DATA_VIEWS.includes(v)) openDataPage(v);
+  if (v === 'usage') openUsage();
+}
+document.querySelectorAll('.nav[data-view]').forEach((n) => n.onclick = () => setView(n.dataset.view));
+
+// The business page (auto-replies editor) replaces the list until you go back.
+function showRules() {
+  $('#app').hidden = true; $('#usersView').hidden = true; $('#dataView').hidden = true; $('#usageView').hidden = true; $('#rulesView').hidden = false;
+  view = 'rules'; window.scrollTo(0, 0);
+}
+function closeRules() { setPromptFs(false); setView('biz'); lastJson = ''; refresh(); }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && view === 'rules' && !document.querySelector('dialog[open]')) closeRules();
+});
+
+// ---- Users table (admins and the super admin) ----
+let usersList = [];
+let ufilter = 'all';
+const dateOnly = (t) => (t ? new Date(t).toLocaleDateString([], { dateStyle: 'medium' }) : '-');
+const ago = (t) => {
+  if (!t) return 'Never';
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'Just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : dateOnly(t);
+};
+
+async function loadUsers() {
+  try { usersList = await api('/admin/users'); } catch (err) {
+    if (err.message !== 'unauthorized') $('#usersRows').replaceChildren(el('tr', { className: 'none' }, el('td', { colSpan: 6, textContent: err.message })));
+    return;
+  }
+  renderUsers();
+}
+
+function renderUsers() {
+  const pending = usersList.filter((u) => u.status === 'pending').length;
+  $('#pendingBadge').hidden = !pending; $('#pendingBadge').textContent = pending;
+  $('#ufPending').textContent = pending ? `Pending (${pending})` : 'Pending';
+  $('#ucount').textContent = usersList.length;
+  const q = $('#usearch').value.trim().toLowerCase();
+  const shown = usersList.filter((u) => (ufilter === 'all' || u.status === ufilter) && (!q || u.name.toLowerCase().includes(q) || u.email.includes(q)));
+
+  const act = (label, cls, fn) => el('button', { type: 'button', className: cls, textContent: label, onclick: async (ev) => {
+    ev.target.disabled = true;
+    try { await fn(); } catch (err) { alert(err.message); }
+    loadUsers();
+  } });
+  const patch = (u, data) => () => api(`/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+  const rows = shown.map((u) => {
+    const mine = u.id === me.id;
+    const manageable = !mine && ((me.role === 'super_admin' && u.role !== 'super_admin') || (me.role === 'admin' && u.role === 'user'));
+    const buttons = [];
+    if (manageable) {
+      if (u.status === 'pending') buttons.push(act('Approve', '', patch(u, { status: 'active' })), act('Reject', 'ghost', async () => {
+        if (confirm(`Reject ${u.email}?`)) await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+      }));
+      else if (u.status === 'active') buttons.push(act('Disable', 'ghost', patch(u, { status: 'disabled' })));
+      else buttons.push(act('Enable', '', patch(u, { status: 'active' })));
+      if (me.role === 'super_admin' && u.status !== 'pending') buttons.push(act(u.role === 'admin' ? 'Make user' : 'Make admin', 'alt', patch(u, { role: u.role === 'admin' ? 'user' : 'admin' })));
+      if (u.status !== 'pending') {
+        buttons.push(act('Reset password', 'alt', async () => {
+          const pw = prompt(`New password for ${u.email} (10+ characters)`);
+          if (pw) await api(`/admin/users/${u.id}/password`, { method: 'POST', body: JSON.stringify({ password: pw }) });
+        }), act('Delete', 'ghost', async () => {
+          if (confirm(`Delete ${u.email}?`)) await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+        }));
+      }
+    }
+    return el('tr', {},
+      el('td', {}, el('div', { className: 'usr' },
+        el('span', { className: 'avatar', textContent: (u.name || '?').trim().charAt(0).toUpperCase() }),
+        el('div', {}, el('b', { textContent: u.name + (mine ? ' (you)' : '') }), el('small', { textContent: u.email })))),
+      el('td', {}, el('span', { className: `role ${u.role}`, textContent: u.role.replace('_', ' ') })),
+      el('td', {}, el('span', { className: `st ${u.status}`, textContent: u.status })),
+      el('td', { className: 'dim', textContent: dateOnly(u.created_at) }),
+      el('td', { className: 'dim', textContent: ago(u.last_login_at) }),
+      el('td', {}, el('div', { className: 'acts' }, ...buttons)));
+  });
+  $('#usersRows').replaceChildren(...(rows.length ? rows : [el('tr', { className: 'none' }, el('td', { colSpan: 6, textContent: 'No users match.' }))]));
+}
+document.querySelectorAll('.toolbar2 .f[data-uf]').forEach((b) => b.onclick = () => {
+  ufilter = b.dataset.uf;
+  document.querySelectorAll('.toolbar2 .f[data-uf]').forEach((x) => x.classList.toggle('on', x === b));
+  renderUsers();
+});
+$('#usearch').oninput = renderUsers;
 
 // Reconnect every business (one after another).
 $('#restartAll').onclick = async () => {
-  const text = [
-    'Reload everything?',
-    '',
-    "Settings are re-read from the database, then every business reconnects to WhatsApp, one after another, from its saved login (no new scan). Businesses missing from this page come back.",
-    '',
-    'Each business takes a few seconds. Messages arriving meanwhile are picked up after it reconnects.',
-  ].join('\n');
+  const text = 'Reload all businesses?';
   if (!confirm(text)) return;
   const btn = $('#restartAll'); btn.disabled = true; $('#allMsg').textContent = 'Reloading everything...';
   try {
@@ -326,12 +818,30 @@ $('#restartAll').onclick = async () => {
   lastJson = ''; refresh();
 };
 
+function openAdd() { setView('biz'); $('#addMsg').textContent = ''; $('#addDlg').showModal(); $('#newId').focus(); }
+$('#newBtn').onclick = openAdd;
+$('#sideNew').onclick = openAdd;
+$('#addCancel').onclick = () => $('#addDlg').close();
+// Keyboard: C creates a business (when you're not typing and nothing is open).
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'c' || e.metaKey || e.ctrlKey || e.altKey || !me) return;
+  if (document.querySelector('dialog[open]') || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  e.preventDefault(); openAdd();
+});
+
+// Light / dark.
+$('#themeBtn').onclick = () => {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch {}
+};
+
 $('#addForm').onsubmit = async (e) => {
   e.preventDefault();
   $('#addMsg').textContent = '';
   try {
     await api('/sessions', { method: 'POST', body: JSON.stringify({ id: $('#newId').value.trim(), phone: $('#newPhone').value.trim() || undefined }) });
-    $('#newId').value = ''; $('#newPhone').value = ''; refresh();
+    $('#newId').value = ''; $('#newPhone').value = ''; $('#addDlg').close(); lastJson = ''; refresh();
   } catch (err) { if (err.message !== 'unauthorized') $('#addMsg').textContent = err.message; }
 };
 
@@ -355,15 +865,15 @@ function stageText(s) {
   switch (s.status) {
     case 'starting':
       if (s.progress && s.progress.percent > 0) return `Loading chats... ${s.progress.percent}%`;
-      if (s.newLogin) return s.phone ? `Logged out. Getting a new login code${forCode}...` : 'Logged out. Getting a new QR code...';
-      if (s.phone) return `Connecting to WhatsApp to get a login code${forCode}...`;
-      return s.attempt > 1 ? `Connecting to WhatsApp (try ${s.attempt} of 3)...` : 'Connecting to WhatsApp...';
-    case 'requesting_code': return `Asking WhatsApp for a login code${forCode}...`;
+      if (s.newLogin) return s.phone ? `Getting a new login code${forCode}...` : 'Getting a new QR code...';
+      if (s.phone) return `Getting a login code${forCode}...`;
+      return s.attempt > 1 ? `Connecting (try ${s.attempt} of 3)...` : 'Connecting...';
+    case 'requesting_code': return `Requesting a login code${forCode}...`;
     case 'loading_qr': return 'Switching to a QR code...';
     case 'authenticated': return 'Linked. Finishing login...';
-    case 'retrying': return 'Connection to WhatsApp dropped. Reconnecting...';
+    case 'retrying': return 'Connection lost. Reconnecting...';
     case 'restarting': return 'Reconnecting...';
-    case 'logging_out': return 'Logging out of WhatsApp...';
+    case 'logging_out': return 'Logging out...';
     default: return '';
   }
 }
@@ -380,11 +890,259 @@ async function restart(id, phone, btn) {
   } catch (err) { alert(err.message); if (btn) btn.disabled = false; }
 }
 
-function card(s) {
-  const c = el('div', { className: 'card' },
-    el('div', { className: 'top' },
-      el('div', { className: 'name', textContent: s.id }),
-      el('span', { className: 'pill ' + s.status, textContent: s.newLogin && s.status === 'starting' ? (s.phone ? 'Getting code' : 'Getting QR') : PILL[s.status] || s.status })));
+// ---- Dropdown component ----
+// One popup used everywhere: provider, model, filters, status, contacts. It is drawn on the page
+// (not inside the field), so tables and panels never clip it.
+function makePopup({ anchor, getItems, onPick, search = false, getQuery = () => '', minWidth = 200 }) {
+  let box = null, sbox = null, listEl = null, shown = [], active = -2;
+  const isOpen = () => Boolean(box);
+  const wantsSearch = () => (typeof search === 'function' ? search() : search);
+
+  function place() {
+    if (!box) return;
+    const r = anchor.getBoundingClientRect();
+    const w = Math.max(r.width, minWidth);
+    box.style.minWidth = `${w}px`;
+    box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+    const below = innerHeight - r.bottom, h = Math.min(box.offsetHeight || 280, 320);
+    if (below < h + 12 && r.top > below) { box.style.top = 'auto'; box.style.bottom = `${innerHeight - r.top + 4}px`; }
+    else { box.style.bottom = 'auto'; box.style.top = `${r.bottom + 4}px`; }
+  }
+  function draw(resetActive) {
+    if (!box) return;
+    const q = (sbox ? sbox.value : getQuery()).trim().toLowerCase();
+    const { items, note } = getItems(q);
+    shown = items;
+    if (resetActive) active = 0;
+    if (active === -2) active = Math.max(0, shown.findIndex((i) => i.selected));
+    if (active >= shown.length) active = shown.length - 1;
+    const rows = shown.map((it, i) => {
+      const row = el('div', { className: 'combo-item' + (i === active ? ' on' : '') });
+      if (it.avatar != null) row.append(el('span', { className: 'avatar', textContent: it.avatar }));
+      row.append(el('div', { className: 'ci' }, el('b', { textContent: it.title }), it.sub ? el('small', { textContent: it.sub }) : null));
+      if (it.right) row.append(el('span', { className: 'ct', textContent: it.right }));
+      if (it.selected) row.append(el('span', { className: 'ck', textContent: '✓' }));
+      row.onmousedown = (e) => { e.preventDefault(); pick(it); };
+      return row;
+    });
+    listEl.replaceChildren(...rows, ...(note ? [el('div', { className: 'combo-empty', textContent: note })] : []));
+    box.querySelector('.combo-item.on')?.scrollIntoView({ block: 'nearest' });
+    place();
+  }
+  function pick(it) { close(); onPick(it); }
+  const outside = (e) => { if (box && !box.contains(e.target) && !anchor.contains(e.target)) close(); };
+  function keydown(e) { if (key(e)) e.preventDefault(); }
+  function open() {
+    if (box) return;
+    box = el('div', { className: 'combo-list' });
+    listEl = el('div', { className: 'pop-items' });
+    if (wantsSearch()) {
+      sbox = el('input', { className: 'pop-search', placeholder: 'Search...', autocomplete: 'off', spellcheck: false });
+      sbox.oninput = () => draw(true); sbox.onkeydown = keydown;
+      box.append(sbox);
+    }
+    box.append(listEl);
+    (anchor.closest('dialog') || document.body).append(box);
+    active = -2; draw();
+    sbox?.focus();
+    document.addEventListener('mousedown', outside, true);
+    addEventListener('resize', place); addEventListener('scroll', place, true);
+    anchor.setAttribute?.('aria-expanded', 'true');
+  }
+  function close() {
+    if (!box) return;
+    box.remove(); box = null; sbox = null;
+    document.removeEventListener('mousedown', outside, true);
+    removeEventListener('resize', place); removeEventListener('scroll', place, true);
+    anchor.removeAttribute?.('aria-expanded');
+  }
+  // Returns true when it used the key.
+  function key(e) {
+    if (!box) { if (e.key === 'ArrowDown') { open(); return true; } return false; }
+    if (e.key === 'ArrowDown') { active = Math.min(active + 1, shown.length - 1); draw(); return true; }
+    if (e.key === 'ArrowUp') { active = Math.max(active - 1, 0); draw(); return true; }
+    if (e.key === 'Enter' && shown[active]) { pick(shown[active]); return true; }
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return true; }
+    return false;
+  }
+  return { open, close, isOpen, key, redraw: () => draw(true) };
+}
+
+// Turns a <select> into a dropdown. The <select> stays in the page (hidden), so existing code that
+// reads .value or listens for "change" keeps working. Pass a detached <select> and insert the result.
+function enhanceSelect(sel, { inline = false, small = false } = {}) {
+  if (sel._dd) return sel._dd;
+  const protoValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  const label = el('span', { className: 'dd-label' });
+  const btn = el('button', { type: 'button', className: 'dd' + (small ? ' sm' : '') }, label, el('span', { className: 'dd-caret', textContent: '⌄' }));
+  const wrap = el('span', { className: 'ddwrap' + (inline ? ' auto' : '') });
+  const refresh = () => {
+    const o = sel.options[sel.selectedIndex];
+    label.textContent = o ? o.textContent : 'Select...'; label.classList.toggle('dim', !o);
+    btn.disabled = sel.disabled;
+  };
+  Object.defineProperty(sel, 'value', { get() { return protoValue.get.call(this); }, set(v) { protoValue.set.call(this, v); refresh(); }, configurable: true });
+  const pop = makePopup({
+    anchor: btn, minWidth: 180, search: () => sel.options.length > 7,
+    getItems: (q) => {
+      const items = [...sel.options].filter((o) => !q || o.textContent.toLowerCase().includes(q)).map((o) => ({ title: o.textContent, value: o.value, selected: o.value === sel.value }));
+      return { items, note: items.length ? '' : 'No matches' };
+    },
+    onPick: (it) => { sel.value = it.value; sel.dispatchEvent(new Event('change', { bubbles: true })); btn.focus(); },
+  });
+  btn.onclick = () => (pop.isOpen() ? pop.close() : pop.open());
+  btn.onkeydown = (e) => { if (pop.key(e)) e.preventDefault(); else if (e.key === ' ' && !pop.isOpen()) { e.preventDefault(); pop.open(); } };
+  new MutationObserver(refresh).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  if (sel.parentNode) sel.replaceWith(wrap);
+  wrap.append(sel, btn);
+  refresh();
+  sel._dd = wrap;
+  return wrap;
+}
+
+// A text field with a suggestion dropdown (replaces <datalist>). You can still type anything.
+function enhanceDatalistInput(input) {
+  const dl = document.getElementById(input.getAttribute('list'));
+  input.removeAttribute('list');
+  let typed = false;
+  const pop = makePopup({
+    anchor: input, minWidth: 240, getQuery: () => (typed ? input.value : ''),
+    getItems: (q) => {
+      const items = [...dl.options].filter((o) => !q || o.value.toLowerCase().includes(q)).map((o) => ({ title: o.value, selected: o.value === input.value }));
+      return { items, note: items.length ? '' : 'Custom value' };
+    },
+    onPick: (it) => { input.value = it.value; input.dispatchEvent(new Event('input', { bubbles: true })); },
+  });
+  const show = () => { typed = false; pop.open(); };
+  input.addEventListener('focus', show);
+  input.addEventListener('click', () => { if (!pop.isOpen()) show(); });
+  input.addEventListener('input', () => { typed = true; if (pop.isOpen()) pop.redraw(); else pop.open(); });
+  input.addEventListener('keydown', (e) => { if (pop.key(e)) e.preventDefault(); });
+  input.addEventListener('blur', () => pop.close());
+}
+
+// ---- Contacts ----
+const contactCache = {}; // business -> { at, list }
+async function loadSendContacts(id) {
+  const hit = contactCache[id];
+  if (hit && Date.now() - hit.at < 60000) return hit.list;
+  const list = await api(`/sessions/${encodeURIComponent(id)}/contacts?for=send`);
+  contactCache[id] = { at: Date.now(), list };
+  return list;
+}
+const ago2 = (t) => {
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 60 ? `${Math.max(1, m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
+};
+const digitsOf = (t) => t.replace(/[\s+()-]/g, '');
+const contactItem = (c) => ({ avatar: (c.name || '?').charAt(0).toUpperCase(), title: c.name, sub: c.isGroup ? 'Group' : c.number ? `+${c.number}` : 'Number hidden', right: ago2(c.lastMessageAt), contact: c });
+const matches = (c, q) => { const qd = digitsOf(q); return !q || c.name.toLowerCase().includes(q) || Boolean(c.number && qd && c.number.includes(qd)); };
+
+// The "Send to" box: pick a contact or group, or type a number.
+// d = { to, label }: what gets sent (a number or group name) and what the box shows.
+function contactCombo(s, d) {
+  const input = el('input', { placeholder: 'Search a contact or group, or type a number', value: d.label || d.to || '', required: true, autocomplete: 'off', spellcheck: false });
+  const wrap = el('div', { className: 'combo' }, input, el('span', { className: 'combo-caret', textContent: '⌄' }));
+  let contacts = null, loadErr = '', typed = false;
+  const pop = makePopup({
+    anchor: wrap, minWidth: 280, getQuery: () => (typed ? input.value : ''),
+    getItems: (q) => {
+      const qd = digitsOf(q);
+      const hits = (contacts || []).filter((c) => matches(c, q));
+      const items = hits.slice(0, 60).map(contactItem);
+      if (/^\d{6,15}$/.test(qd) && !hits.some((c) => c.number === qd)) items.unshift({ avatar: '+', title: `Send to +${qd}`, sub: 'New number', number: qd });
+      const note = contacts === null && !loadErr ? 'Loading contacts...' : loadErr || (items.length ? '' : 'No match. Type a full number to send to a new contact.');
+      return { items, note };
+    },
+    onPick: (it) => {
+      if (it.number) { d.to = it.number; d.label = `+${it.number}`; } else { d.to = it.contact.number || it.contact.name; d.label = it.contact.name; }
+      input.value = d.label;
+    },
+  });
+  async function open() {
+    typed = false; pop.open();
+    if (contacts === null && !loadErr) {
+      try { contacts = await loadSendContacts(s.id); } catch (err) { loadErr = err.message; }
+      pop.redraw();
+    }
+  }
+  input.onfocus = () => { input.select(); open(); };
+  input.onclick = () => { if (!pop.isOpen()) open(); };
+  input.onblur = () => pop.close();
+  input.oninput = () => { d.to = input.value; d.label = ''; typed = true; if (pop.isOpen()) pop.redraw(); else pop.open(); };
+  input.onkeydown = (e) => { if (pop.key(e)) e.preventDefault(); };
+  return wrap;
+}
+
+// A phone-number field that suggests this business's contacts (people only). Typing a number still works.
+function attachNumberPicker(input, getBusiness) {
+  let contacts = null, failed = false, typed = false;
+  const pop = makePopup({
+    anchor: input, minWidth: 260, getQuery: () => (typed ? input.value : ''),
+    getItems: (q) => {
+      const items = (contacts || []).filter((c) => !c.isGroup && c.number && matches(c, q)).slice(0, 60).map((c) => ({ ...contactItem(c), value: c.number }));
+      return { items, note: contacts === null && !failed ? 'Loading contacts...' : items.length ? '' : failed ? 'Contacts appear once this number is connected. Type a number.' : 'No match. Type a full number.' };
+    },
+    onPick: (it) => { input.value = it.value; input.dispatchEvent(new Event('input', { bubbles: true })); },
+  });
+  async function open() {
+    typed = false; pop.open();
+    if (contacts === null) {
+      failed = false;
+      try { contacts = await loadSendContacts(getBusiness()); } catch { failed = true; contacts = []; }
+      pop.redraw();
+      if (failed) contacts = null; // try again next time
+    }
+  }
+  input.addEventListener('focus', open);
+  input.addEventListener('click', () => { if (!pop.isOpen()) open(); });
+  input.addEventListener('input', () => { typed = true; if (pop.isOpen()) pop.redraw(); else pop.open(); });
+  input.addEventListener('keydown', (e) => { if (pop.key(e)) e.preventDefault(); });
+  input.addEventListener('blur', () => pop.close());
+}
+
+// ---- Auto-replies switch ----
+async function setAutoReplies(id, enabled) {
+  return api(`/sessions/${encodeURIComponent(id)}/rules`, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+}
+
+// ---- Share the QR code ----
+// The QR is only valid for about a minute, so it is shared as an image, never as a public link.
+const QR_TEXT = (id) => `Link WhatsApp for "${id}": open WhatsApp > Linked devices > Link a device, then scan this QR code. It expires in about a minute.`;
+async function qrFile(s) {
+  const blob = await (await fetch(s.qr)).blob();
+  return new File([blob], `${s.id}-whatsapp-qr.png`, { type: 'image/png' });
+}
+function downloadFile(file) {
+  const a = el('a', { href: URL.createObjectURL(file), download: file.name });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// Opens the phone / OS share sheet when the browser has one, otherwise downloads the image.
+async function shareQr(s, btn) {
+  const label = btn.textContent; btn.disabled = true;
+  try {
+    const file = await qrFile(s);
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: `Link WhatsApp: ${s.id}`, text: QR_TEXT(s.id) }); btn.textContent = 'Shared'; }
+      catch (e) { if (e.name !== 'AbortError') { downloadFile(file); btn.textContent = 'Saved image'; } }
+    } else { downloadFile(file); btn.textContent = 'Saved image'; }
+  } catch (err) { alert(`Could not share the QR code: ${err.message}`); }
+  setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1800);
+}
+async function copyQr(s, btn) {
+  const label = btn.textContent; btn.disabled = true;
+  try {
+    const file = await qrFile(s);
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': file })]);
+    btn.textContent = 'Copied';
+  } catch { btn.textContent = 'Copy not supported'; }
+  setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1800);
+}
+
+// Everything about linking and keeping WhatsApp connected: lives on the business page, "Connection" tab.
+function connection(s) {
+  const c = el('div', { className: 'conn' });
 
   if (s.me) c.append(el('div', { className: 'meta', textContent: `${s.me.name || ''} +${s.me.number}` }));
 
@@ -405,7 +1163,7 @@ function card(s) {
       const countdown = el('span', { className: 'tick-countdown' });
       const now = el('button', { type: 'button', className: 'link', textContent: 'Restart now' });
       now.onclick = () => restart(s.id, undefined, now);
-      slow.append(el('span', {}, 'This is taking longer than usual. ', countdown, ' '), now);
+      slow.append(el('span', {}, countdown, ' '), now);
       c.append(slow);
     }
 
@@ -433,6 +1191,9 @@ function card(s) {
     c.append(el('div', { className: 'qr' },
       el('img', { src: s.qr, alt: 'WhatsApp QR code' }),
       el('p', { textContent: 'WhatsApp > Linked devices > Link a device' })));
+    const share = el('button', { type: 'button', textContent: 'Share QR code' }); share.onclick = () => shareQr(s, share);
+    const copy = el('button', { type: 'button', className: 'alt', textContent: 'Copy image' }); copy.onclick = () => copyQr(s, copy);
+    c.append(el('div', { className: 'row' }, share, copy));
     const pd = pairDrafts[s.id] || (pairDrafts[s.id] = { phone: '' });
     const phone = el('input', { placeholder: 'Or link with phone number, e.g. 923001234567', value: pd.phone, inputMode: 'tel', required: true, oninput: (e) => pd.phone = e.target.value });
     const go = el('button', { textContent: 'Get code' });
@@ -470,7 +1231,7 @@ function card(s) {
 
   if (s.status === 'ready') {
     const d = drafts[s.id] || (drafts[s.id] = { to: '', message: '' });
-    const to = el('input', { placeholder: 'Phone (with country code) or group name', value: d.to, required: true, oninput: (e) => d.to = e.target.value });
+    const to = contactCombo(s, d);
     const message = el('input', { placeholder: 'Message', value: d.message, required: true, oninput: (e) => d.message = e.target.value });
     const out = el('div', { className: 'msg' });
     const btn = el('button', { textContent: 'Send' });
@@ -491,9 +1252,7 @@ function card(s) {
     const w = s.web;
     const hard = el('button', { className: 'alt', type: 'button', textContent: 'Reconnect' });
     hard.onclick = async () => {
-      if (!confirm(`Reconnect "${s.id}" to WhatsApp?
-
-The connection closes and opens again from the saved login (no new scan). Takes a few seconds; messages arriving meanwhile are picked up after it reconnects.`)) return;
+      if (!confirm(`Reconnect "${s.id}"?`)) return;
       hard.disabled = true;
       try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); }
       catch (err) { alert(err.message); hard.disabled = false; }
@@ -508,23 +1267,11 @@ The connection closes and opens again from the saved login (no new scan). Takes 
     c.append(webRow);
   }
 
-  const autoBtn = el('button', { className: 'alt', type: 'button', textContent: 'Edit' });
-  autoBtn.onclick = () => openRules(s.id);
-  c.append(el('div', { className: 'auto' },
-    el('span', {}, 'Auto-replies: ', el('b', { className: s.autoReply ? 'on' : 'off', textContent: s.autoReply || 'Off' })),
-    autoBtn));
-  if (s.aiError) c.append(el('div', { className: 'msg err', textContent: `Last AI reply failed: ${s.aiError}` }));
-
-  const dataBtn = el('button', { className: 'alt', type: 'button' }, 'Customers & orders',
-    s.openQuestions ? el('span', { className: 'badge', title: 'Questions waiting for the manager', textContent: s.openQuestions }) : null);
-  dataBtn.onclick = () => openData(s.id);
-  c.append(dataBtn);
-
   // Log out: the card stays and shows a new QR. Delete business: the only way a card goes.
   if (s.status === 'ready') {
     const logout = el('button', { className: 'ghost', textContent: 'Log out' });
     logout.onclick = async () => {
-      if (!confirm(`Log "${s.id}" out?\n\nWhatsApp unlinks this device and the card shows a new QR code to link again. Settings, customers and orders are kept.`)) return;
+      if (!confirm(`Log out "${s.id}"?`)) return;
       logout.disabled = true;
       try { await api(`/sessions/${encodeURIComponent(s.id)}/logout`, { method: 'POST' }); lastJson = ''; refresh(); }
       catch (err) { alert(err.message); logout.disabled = false; }
@@ -533,12 +1280,64 @@ The connection closes and opens again from the saved login (no new scan). Takes 
   }
   const wipe = el('button', { className: 'link danger', type: 'button', textContent: 'Delete business and all its data' });
   wipe.onclick = async () => {
-    if (!confirm(`Delete "${s.id}" completely?\n\nThis logs it out, removes this card, and permanently deletes its settings, API keys, customers, orders, questions and logs, on every server. This can't be undone.`)) return;
+    if (!confirm(`Delete "${s.id}" and all its data? This can't be undone.`)) return;
     wipe.disabled = true;
-    try { await api(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); delete drafts[s.id]; refresh(); }
+    try { await api(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); delete drafts[s.id]; if (view === 'rules') closeRules(); else refresh(); }
     catch (err) { alert(err.message); wipe.disabled = false; }
   };
   c.append(wipe);
+  return c;
+}
+
+// The summary card: what is this business doing, what needs me, one clear action.
+const OPEN_TAB = (s) => (s.status === 'ready' ? 'replies' : 'connection');
+function autoRow(s) {
+  const sw = el('input', { type: 'checkbox', className: 'sw', checked: Boolean(s.autoReply), title: s.autoReply ? 'Turn auto-replies off' : 'Turn auto-replies on' });
+  sw.onchange = async () => {
+    sw.disabled = true;
+    try { await setAutoReplies(s.id, sw.checked); lastJson = ''; refresh(); }
+    catch (err) { sw.checked = !sw.checked; alert(err.message); }
+    sw.disabled = false;
+  };
+  return el('div', { className: 'kv' }, el('span', { className: 'k', textContent: 'Auto-replies' }),
+    el('span', { className: 'v sw-v ' + (s.autoReply ? 'on' : '') }, s.autoReply || 'Off', sw));
+}
+function card(s) {
+  const pillText = s.newLogin && s.status === 'starting' ? (s.phone ? 'Getting code' : 'Getting QR') : PILL[s.status] || s.status;
+  const open = (tab) => openRules(s.id, tab || OPEN_TAB(s));
+  const kv = (k, v, cls = '') => el('div', { className: 'kv' }, el('span', { className: 'k', textContent: k }), el('span', { className: `v ${cls}`, textContent: v }));
+  const c = el('div', { className: 'bcard' },
+    el('div', { className: 'bhead' },
+      el('span', { className: 'avatar', textContent: s.id.charAt(0).toUpperCase() }),
+      el('div', { className: 'btitle' }, el('b', { textContent: s.id }), el('small', { textContent: s.me ? `${s.me.name || 'WhatsApp'} · +${s.me.number}` : 'Not linked yet' })),
+      el('span', { className: 'pill ' + s.status, textContent: pillText })));
+
+  // What needs attention right now.
+  if (WORKING.includes(s.status)) {
+    const pct = s.status === 'starting' && s.progress ? s.progress.percent : null;
+    const elapsed = el('span', { className: 'tick-elapsed' }); elapsed.dataset.since = s.since;
+    c.append(el('div', { className: 'stage' },
+      el('div', { className: 'line' }, el('span', { textContent: stageText(s) || (s.status === 'qr' ? 'Waiting for you to scan the QR code' : '') }), elapsed),
+      el('div', { className: 'progress' + (pct ? '' : ' busy') }, el('div', { style: pct ? `width:${pct}%` : '' }))));
+  }
+  if (s.status === 'code' && s.code) c.append(el('div', { className: 'note' }, 'Code: ', el('b', { className: 'codeInline', textContent: s.code })));
+  if (s.error && s.status !== 'ready') c.append(el('div', { className: 'msg err', textContent: s.error }));
+  if (s.aiError) c.append(el('div', { className: 'msg err', textContent: `Last AI reply failed: ${s.aiError}` }));
+
+  const w = s.status === 'ready' ? s.web : null;
+  c.append(el('div', { className: 'kvs' },
+    autoRow(s),
+    kv('Waiting for manager', s.openQuestions ? `${s.openQuestions} question${s.openQuestions === 1 ? '' : 's'}` : 'None', s.openQuestions ? 'warn' : ''),
+    ...(w ? [kv('Connection health', w.text, w.level === 'bad' ? 'bad' : w.level === 'warn' ? 'warn' : '')] : [])));
+
+  const primary = { ready: 'Manage', qr: 'Link WhatsApp', code: 'Enter code', error: 'Fix connection', auth_failure: 'Fix connection' }[s.status] || 'Open';
+  const main = el('button', { type: 'button', textContent: primary, onclick: () => open() });
+  const data = el('button', { type: 'button', className: 'alt' }, 'Customers & orders', s.openQuestions ? el('span', { className: 'badge', textContent: s.openQuestions }) : null);
+  data.onclick = () => openData(s.id);
+  let second = data;
+  if (s.status === 'qr' && s.qr) { second = el('button', { type: 'button', className: 'alt', textContent: 'Share QR code' }); second.onclick = () => shareQr(s, second); }
+  c.append(el('div', { className: 'bactions' }, main, second));
+  c.onclick = (e) => { if (!e.target.closest('button, input, label')) open(); };
   return c;
 }
 
@@ -551,18 +1350,48 @@ setInterval(() => {
     n.hidden = now - Number(n.dataset.since) < SLOW_AFTER_MS;
     const cd = n.querySelector('.tick-countdown');
     const left = Number(n.dataset.deadline || 0) - now;
-    cd.textContent = !n.dataset.deadline ? 'WhatsApp is slow to respond. Give it a little longer, or restart it.' : left > 0 ? `If nothing changes, it restarts by itself in ${fmt(left)}.` : 'Restarting by itself now...';
+    cd.textContent = !n.dataset.deadline ? 'Taking longer than usual.' : left > 0 ? `Taking longer than usual. Restarts in ${fmt(left)}.` : 'Restarting...';
   });
 }, 1000);
 
 let lastJson = '';
+let lastList = [];
+let filter = 'all';
+const WAITING = ['starting', 'requesting_code', 'loading_qr', 'qr', 'code', 'authenticated', 'retrying', 'restarting', 'logging_out'];
+const needsAttention = (x) => x.status !== 'ready';
+
+function render() {
+  const q = $('#search').value.trim().toLowerCase();
+  const shown = lastList.filter((x) => (filter === 'all' || (filter === 'ready' ? x.status === 'ready' : needsAttention(x))) && (!q || x.id.toLowerCase().includes(q)));
+  const ready = lastList.filter((x) => x.status === 'ready').length;
+  const waiting = lastList.filter((x) => WAITING.includes(x.status)).length;
+  const errors = lastList.filter((x) => x.status === 'error' || x.status === 'auth_failure').length;
+  const cell = (cls, label, value) => el('div', { className: `stat ${cls}` }, el('span', { className: 'lbl' }, el('i'), label), el('span', { className: 'val', textContent: value }));
+  $('#stats').replaceChildren(cell('', 'Total', lastList.length), cell('ok', 'Connected', ready), cell('warn', 'Connecting / scan', waiting), cell('bad', 'Errors', errors));
+  $('#count').textContent = lastList.length ? `${lastList.length}` : '';
+  const waitingQ = lastList.reduce((n, x) => n + (x.openQuestions || 0), 0);
+  $('#qBadge').hidden = !waitingQ; $('#qBadge').textContent = waitingQ;
+  const none = lastList.length
+    ? el('div', { className: 'empty' }, el('b', { textContent: 'Nothing matches' }), 'Try another filter or search.')
+    : el('div', { className: 'empty' }, el('b', { textContent: 'No businesses yet' }), 'Press C to add one.');
+  $('#list').replaceChildren(...(shown.length ? shown.map(card) : [none]));
+  if (view === 'rules') fillRulesHeader();
+}
+document.querySelectorAll('.toolbar2 .f').forEach((b) => b.onclick = () => {
+  filter = b.dataset.f;
+  document.querySelectorAll('.toolbar2 .f').forEach((x) => x.classList.toggle('on', x === b));
+  render();
+});
+$('#search').oninput = render;
+
 async function refresh() {
   let list;
   try { list = await api('/sessions'); } catch { return; }
   const json = JSON.stringify(list);
   if (json === lastJson) return; // don't redraw (and wipe typing) if nothing changed
   lastJson = json;
-  $('#list').replaceChildren(...(list.length ? list.map(card) : [el('div', { className: 'empty', textContent: 'No WhatsApp numbers connected yet. Add one above.' })]));
+  lastList = list;
+  render();
 }
 
 // ---------------------------------------------------------------------------
@@ -601,32 +1430,16 @@ function showMode() {
   $('#aiSection').style.display = ai ? 'flex' : 'none';
   $('#fixedSection').style.display = ai ? 'none' : 'flex';
   $('#fallbackLabel').textContent = ai ? 'Reply if the AI fails' : 'Reply when nothing matches';
-  $('#fallbackHint').textContent = ai
-    ? 'Sent if the AI service is down or declines. Leave blank to stay quiet.'
-    : 'Optional. Leave blank to stay quiet.';
 }
 
 // Model suggestions and key hint depend on the provider.
-function showProvider(keepModel) {
-  const p = $('#rProvider').value;
-  const info = loaded.providers[p];
-  $('#modelList').replaceChildren(...info.models.map((m) => el('option', { value: m })));
-  if (!keepModel) $('#rModel').value = info.defaultModel;
-  $('#rModel').placeholder = info.defaultModel;
-  const sameProvider = loaded.ai.provider === p;
-  let hint;
-  if (sameProvider && loaded.ai.apiKeySet) hint = `Saved key ${loaded.ai.apiKeyHint}. Leave blank to keep it.`;
-  else if (loaded.ai.serverKey[p]) hint = `Leave blank to use the server's ${info.label} key.`;
-  else hint = p === 'anthropic' ? 'From console.anthropic.com > API keys.' : 'From platform.openai.com > API keys.';
-  $('#keyHint').textContent = hint;
-  $('#rApiKey').value = '';
-}
 
-async function openRules(id) {
+async function openRules(id, tab) {
   rulesFor = id;
   $('#rMsg').textContent = '';
   $('#rTestOut').replaceChildren();
-  $('#rulesTitle').textContent = `Auto-replies for ${id}`;
+  $('#rulesTitle').textContent = id;
+  setPromptFs(false);
   try { loaded = await api(`/sessions/${encodeURIComponent(id)}/rules`); } catch (err) { return alert(err.message); }
   const r = loaded;
   $('#rEnabled').checked = r.enabled;
@@ -639,26 +1452,93 @@ async function openRules(id) {
   $('#rRepeat').value = r.repeatAfterMinutes;
   $('#rPause').value = r.pauseAfterHumanMinutes;
   $('#rKeywords').replaceChildren(...(r.keywords.length ? r.keywords : [undefined]).map(kwRow));
-  $('#rProvider').value = r.ai.provider;
-  showProvider(true);
-  $('#rModel').value = r.ai.model;
+  // Provider, model and keys are server settings (env). Only say so when something is missing.
+  $('#aiSetup').textContent = r.server?.aiReady ? '' : `AI replies are not set up on this server (missing ${r.server?.aiEnvKey || 'API key'}).`;
+  $('#voiceSetup').textContent = r.server?.voiceReady ? '' : 'Voice notes are not set up on this server (missing OPENAI_API_KEY).';
   $('#rPrompt').value = r.ai.prompt;
+  updatePromptCount();
   $('#rHistory').value = r.ai.historyMessages;
   $('#rMaxHour').value = r.ai.maxRepliesPerHour;
   $('#rProfileEvery').value = r.ai.profileEveryTurns;
   $('#rManager').value = r.ai.managerNumber;
   $('#rVoice').checked = r.ai.transcribeVoice;
   $('#rImages').checked = r.ai.understandImages;
-  $('#rVoiceKey').value = '';
-  showVoiceKeyHint();
   document.querySelector(`input[name=who][value=${r.contacts.mode}]`).checked = true;
   whoSelected = new Map(r.contacts.list.map((c) => [c.id, c.name]));
   whoChats = null;
   $('#whoSearch').value = '';
   showWho();
   showMode();
-  $('#rulesDlg').showModal();
+  showRules();
+  setRulesTab(tab || OPEN_TAB(lastList.find((b) => b.id === id) || {}));
 }
+
+let rvTab = 'replies';
+const PANES = { connection: '#rvConn', usage: '#rvUsage', access: '#rvAccess' };
+function setRulesTab(t) {
+  if (t === 'access' && !isAdminUser()) t = 'replies';
+  rvTab = t;
+  document.querySelectorAll('#rulesView .dtabs button').forEach((x) => x.classList.toggle('on', x.dataset.t === t));
+  for (const [k, sel] of Object.entries(PANES)) $(sel).hidden = k !== t;
+  const own = t in PANES;
+  $('#rulesForm').hidden = own;
+  if (!own) $('#rulesForm').dataset.tab = t;
+  if (t === 'usage') showBusinessUsage();
+  if (t === 'access') showBusinessAccess();
+  fillRulesHeader();
+  window.scrollTo(0, 0);
+}
+
+// Header cards and the Details column: what this business is doing right now.
+const ICON = {
+  page_orders: '<path d="M3 4.5h10l-1 8H4zM5.5 4.5V4a2.5 2.5 0 0 1 5 0v.5"/>',
+  page_customers: '<circle cx="6" cy="5.5" r="2.2"/><path d="M2 13c.5-2 2-3 4-3s3.5 1 4 3M11 4.5a2 2 0 0 1 0 3.8M12.5 10c.9.5 1.4 1.4 1.5 3"/>',
+  page_questions: '<circle cx="8" cy="8" r="5.5"/><path d="M6.5 6.3a1.6 1.6 0 1 1 2.4 1.4c-.6.4-.9.7-.9 1.3M8 11.3v.1"/>',
+  page_logs: '<path d="M3 4h10M3 8h10M3 12h6"/>',
+  status: '<path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM5.8 8.2l1.6 1.6 3-3.2"/>',
+  phone: '<path d="M3.5 2.5h2l1 3-1.4 1a7 7 0 0 0 3.4 3.4l1-1.4 3 1v2a1 1 0 0 1-1 1A10 10 0 0 1 2.5 3.5a1 1 0 0 1 1-1z"/>',
+  user: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13c.6-2.3 2.5-3.5 5-3.5s4.4 1.2 5 3.5"/>',
+  bot: '<rect x="3" y="5" width="10" height="7" rx="2"/><path d="M8 5V3M6 8.5v.5M10 8.5v.5"/>',
+  chat: '<path d="M2.5 4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7l-3 2.5V10.5a2 2 0 0 1-1.5-2z"/>',
+  help: '<circle cx="8" cy="8" r="5.5"/><path d="M6.5 6.3a1.6 1.6 0 1 1 2.4 1.4c-.6.4-.9.7-.9 1.3M8 11.3v.1"/>',
+};
+function fillRulesHeader() {
+  if (!rulesFor || !loaded) return;
+  const x = lastList.find((b) => b.id === rulesFor) || {};
+  const r = loaded;
+  const statusText = x.newLogin && x.status === 'starting' ? 'Getting QR' : PILL[x.status] || x.status || '-';
+  $('#rvToggle').checked = Boolean(r.enabled);
+  const usedFixed = r.mode === 'rules' && (r.enabled || r.welcome || r.fallback || (r.keywords || []).length);
+  const modeText = usedFixed ? 'Fixed replies' : `AI (${r.server?.label || 'Claude'})`;
+  $('#rvAvatar').textContent = rulesFor.charAt(0).toUpperCase();
+  const pill = $('#rvPill'); pill.className = `pill ${x.status || ''}`; pill.textContent = statusText;
+  const row = (icon, k, v) => el('div', { className: 'rv-row' },
+    el('div', { className: 'k' }, Object.assign(document.createElementNS('http://www.w3.org/2000/svg', 'svg'), { innerHTML: ICON[icon] }), k),
+    el('div', { className: 'val' + (v ? '' : ' dim'), textContent: v || 'Not set' }));
+  const svgs = (n) => { n.querySelectorAll('svg').forEach((g) => { g.setAttribute('viewBox', '0 0 16 16'); }); return n; };
+  if (rvTab === 'connection' && x.id) $('#rvConn').replaceChildren(connection(x));
+  $('#rvDetails').replaceChildren(...[
+    row('chat', 'Business', rulesFor),
+    row('status', 'Connection', statusText),
+    row('phone', 'WhatsApp number', x.me?.number ? `+${x.me.number}` : ''),
+    row('user', 'Name on WhatsApp', x.me?.name || ''),
+    row('bot', 'Auto-replies', r.enabled ? `On, ${modeText}` : 'Off'),
+    row('phone', 'Manager', r.ai?.managerNumber ? `+${String(r.ai.managerNumber).replace(/^\+/, '')}` : ''),
+    row('help', 'Questions waiting', String(x.openQuestions || 0)),
+  ].map(svgs));
+}
+$('#rvData').onclick = () => openData(rulesFor);
+$('#rvToggle').onchange = async () => {
+  const box = $('#rvToggle'), msg = $('#rvToggleMsg'), want = box.checked;
+  box.disabled = true; msg.textContent = '';
+  try {
+    const r = await setAutoReplies(rulesFor, want);
+    loaded.enabled = r.enabled; $('#rEnabled').checked = r.enabled; // the form's Save keeps this value
+    lastJson = ''; refresh(); fillRulesHeader();
+  } catch (err) { box.checked = !want; msg.textContent = err.message; }
+  box.disabled = false;
+};
+
 
 function formValues() {
   return {
@@ -674,9 +1554,6 @@ function formValues() {
       keywords: row.querySelector('.kwWords').value, reply: row.querySelector('.kwReply').value,
     })),
     ai: {
-      provider: $('#rProvider').value,
-      model: $('#rModel').value.trim(),
-      apiKey: $('#rApiKey').value.trim(),
       prompt: $('#rPrompt').value,
       historyMessages: Number($('#rHistory').value),
       maxRepliesPerHour: Number($('#rMaxHour').value),
@@ -684,25 +1561,8 @@ function formValues() {
       managerNumber: $('#rManager').value.trim(),
       transcribeVoice: $('#rVoice').checked,
       understandImages: $('#rImages').checked,
-      voiceKey: $('#rVoiceKey').value.trim(),
     },
   };
-}
-
-// Voice notes are transcribed with OpenAI. With ChatGPT replies that's the same key,
-// so the extra key field only shows when replies use Claude.
-function showVoiceKeyHint() {
-  const a = loaded.ai;
-  const chatgpt = $('#rProvider').value === 'openai';
-  $('#voiceKeyRow').style.display = chatgpt ? 'none' : 'flex';
-  $('#voiceInfo').textContent = chatgpt
-    ? 'Voice notes are turned into text with your ChatGPT key above (Urdu, English and mixed), then the AI reads them. Nothing else to set up. Costs roughly a cent per minute of audio.'
-    : "Claude can't listen to audio, so voice notes are turned into text with OpenAI speech-to-text first (Urdu, English and mixed). That needs an OpenAI key. Costs roughly a cent per minute of audio.";
-  let hint;
-  if (a.voiceKeyHint) hint = `Saved key ${a.voiceKeyHint}. Leave blank to keep it.`;
-  else if (a.serverKey.openai) hint = "Leave blank to use the server's OpenAI key.";
-  else hint = 'From platform.openai.com > API keys.';
-  $('#voiceKeyHint').textContent = hint;
 }
 
 // ---- "Who gets auto-replies" picker ----
@@ -728,9 +1588,7 @@ async function loadWho() {
 function renderWho() {
   const mode = whoMode();
   const n = whoSelected.size;
-  $('#whoCount').textContent = mode === 'only'
-    ? `${n} selected. Only these contacts get auto-replies. Showing chats from the last 2 weeks.`
-    : `${n} excluded. These contacts never get auto-replies. Showing chats from the last 2 weeks.`;
+  $('#whoCount').textContent = mode === 'only' ? `${n} selected` : `${n} excluded`;
   if (!whoChats) return;
   const q = $('#whoSearch').value.trim().toLowerCase();
   const recentIds = new Set(whoChats.map((c) => c.id));
@@ -756,13 +1614,27 @@ $('#whoSearch').oninput = renderWho;
 $('#whoReload').onclick = () => { whoChats = null; loadWho(); };
 
 document.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = showMode);
-$('#rProvider').onchange = () => { showProvider(false); showVoiceKeyHint(); };
+const updatePromptCount = () => { $('#rPromptCount').textContent = `${$('#rPrompt').value.length.toLocaleString()} / 20,000`; };
+function setPromptFs(on) {
+  const f = $('#promptField');
+  f.classList.toggle('fs', on);
+  $('#rExpand').textContent = on ? 'Exit full screen' : 'Full screen';
+  if (on) $('#rPrompt').focus();
+}
+$('#rExpand').onclick = (e) => { e.preventDefault(); setPromptFs(!$('#promptField').classList.contains('fs')); };
+$('#rPrompt').addEventListener('input', updatePromptCount);
+// Esc leaves full screen first; it must not also close the business page.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#promptField').classList.contains('fs')) { e.stopImmediatePropagation(); setPromptFs(false); }
+}, true);
 $('#rExample').onclick = () => {
-  if ($('#rPrompt').value.trim() && !confirm('Replace what you wrote with the example?')) return;
-  $('#rPrompt').value = EXAMPLE_PROMPT;
+  if ($('#rPrompt').value.trim() && !confirm('Replace your text with the example?')) return;
+  $('#rPrompt').value = EXAMPLE_PROMPT; updatePromptCount();
 };
 $('#rAddKw').onclick = () => $('#rKeywords').append(kwRow());
-$('#rCancel').onclick = () => $('#rulesDlg').close();
+$('#rCancel').onclick = closeRules;
+$('#rClose').onclick = closeRules;
+document.querySelectorAll('#rulesView .dtabs button').forEach((b) => b.onclick = () => setRulesTab(b.dataset.t));
 
 $('#rTestBtn').onclick = async () => {
   const btn = $('#rTestBtn');
@@ -788,133 +1660,210 @@ $('#rulesForm').onsubmit = async (e) => {
   $('#rSave').disabled = true;
   try {
     await api(`/sessions/${encodeURIComponent(rulesFor)}/rules`, { method: 'PUT', body: JSON.stringify(formValues()) });
-    $('#rulesDlg').close();
-    lastJson = ''; refresh();
+    closeRules();
   } catch (err) { $('#rMsg').textContent = err.message; }
   $('#rSave').disabled = false;
 };
 
 // ---------------------------------------------------------------------------
-// Customers, orders, questions for the manager
+// Data pages: Orders, Customers, Questions, Logs. One table each, across all your businesses.
 // ---------------------------------------------------------------------------
-let dataFor = null;
-let dataTab = 'orders';
+const DATA_VIEWS = ['orders', 'customers', 'questions', 'logs'];
 const when = (t) => (t ? new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '-');
 const STATUS_LABEL = { confirmed: 'Confirmed', shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled' };
+const money = (v) => (v == null ? '?' : Number(v).toLocaleString());
+const two = (a, b) => el('div', { className: 'two' }, el('b', { textContent: a }), b ? el('small', { textContent: b }) : null);
+const td = (kids, cls = '') => el('td', { className: cls }, kids);
 
-function openData(id) {
-  dataFor = id;
-  $('#dataTitle').textContent = `Customers & orders: ${id}`;
-  showTab(dataTab);
-  $('#dataDlg').showModal();
-}
-$('#dataClose').onclick = () => $('#dataDlg').close();
-document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+let dvKind = 'orders', dvFilter = 'all', dvBizSel = 'all', dvRows = [];
+const expanded = new Set(); // rows the user opened, kept across refreshes
 
-async function showTab(tab) {
-  dataTab = tab;
-  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-  const body = $('#dataBody');
-  body.replaceChildren(el('div', { className: 'hint', textContent: 'Loading...' }));
-  if (tab === 'logs') return showLogs();
-  try {
-    const rows = await api(`/sessions/${encodeURIComponent(dataFor)}/${tab}`);
-    const render = { orders: orderItem, customers: customerItem, questions: questionItem }[tab];
-    const emptyText = {
-      orders: 'No orders yet. Orders appear here when a customer confirms one with the AI.',
-      customers: 'No customers yet. Customers appear here after the AI replies to them.',
-      questions: 'No questions yet. Questions appear here when the AI asks the manager for help.',
-    }[tab];
-    body.replaceChildren(...(rows.length ? rows.map(render) : [el('div', { className: 'empty', textContent: emptyText })]));
-  } catch (err) {
-    body.replaceChildren(el('div', { className: 'msg err', textContent: err.message }));
-  }
-}
-
-function orderItem(o) {
-  const status = el('select', {}, ...Object.entries(STATUS_LABEL).map(([v, t]) => el('option', { value: v, textContent: t, selected: v === o.status })));
-  const saved = el('span', { className: 'sub' });
-  status.onchange = async () => {
-    status.disabled = true;
-    try { await api(`/sessions/${encodeURIComponent(dataFor)}/orders/${o.id}`, { method: 'PATCH', body: JSON.stringify({ status: status.value }) }); saved.textContent = 'Saved'; }
-    catch (err) { saved.textContent = err.message; status.value = o.status; }
-    status.disabled = false;
+// Opens a row's details below it. Keeps its state when the table refreshes.
+function pair(key, cols, cells, detail) {
+  const tr = el('tr', { className: detail ? 'has-more' : '' }, ...cells);
+  if (!detail) return [tr];
+  const more = el('tr', { className: 'expand', hidden: !expanded.has(key) }, el('td', { colSpan: cols }, detail));
+  tr.onclick = (e) => {
+    if (e.target.closest('button, select, input, textarea, a')) return;
+    more.hidden = !more.hidden;
+    if (more.hidden) expanded.delete(key); else expanded.add(key);
   };
-  return el('div', { className: 'item' },
-    el('div', { className: 'top' }, el('b', { textContent: `#${o.id} ${o.customer_name || ''}` }), el('span', {}, status, ' ', saved)),
-    el('div', { className: 'sub', textContent: `${when(o.created_at)}${o.phone ? ` · +${o.phone}` : ''}` }),
-    el('ul', {}, ...o.items.map((i) => el('li', { textContent: `${i.quantity} x ${i.name}${i.price ? ` (${i.price})` : ''}` }))),
-    el('div', {}, el('b', { textContent: 'Total: ' }), `${o.total ?? '?'}`),
-    el('div', {}, el('b', { textContent: 'Address: ' }), o.address || '-'),
-    o.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), o.notes) : null);
+  tr.toggle = () => tr.click();
+  return [tr, more];
 }
 
-function customerItem(c) {
-  const p = c.profile || {};
-  const chips = [];
-  if (p.regular_customer || c.order_count > 1) chips.push(el('span', { className: 'chip good', textContent: 'Regular customer' }));
-  if (c.order_count) chips.push(el('span', { className: 'chip', textContent: `${c.order_count} order${c.order_count > 1 ? 's' : ''}` }));
-  if (p.language) chips.push(el('span', { className: 'chip', textContent: p.language }));
-  if (p.complaints?.length) chips.push(el('span', { className: 'chip bad', textContent: `${p.complaints.length} complaint${p.complaints.length > 1 ? 's' : ''}` }));
-  const list = (label, items) => (items?.length ? el('div', {}, el('b', { textContent: `${label}: ` }), items.join('; ')) : null);
-  return el('div', { className: 'item' },
-    el('div', { className: 'top' }, el('b', { textContent: p.name || c.name || 'Unknown' }), el('span', { className: 'sub', textContent: `Last message ${when(c.last_seen)}` })),
-    el('div', { className: 'sub', textContent: [c.phone ? `+${c.phone}` : '', p.alternate_phone ? `alt ${p.alternate_phone}` : ''].filter(Boolean).join(' · ') || 'Number hidden by WhatsApp' }),
-    chips.length ? el('div', { className: 'chips' }, chips) : null,
-    p.address ? el('div', {}, el('b', { textContent: 'Address: ' }), p.address) : null,
-    list('Likes', p.preferences), list("Doesn't like", p.dislikes), list('Complaints', p.complaints),
-    p.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), p.notes) : null,
-    !c.profile_updated_at ? el('div', { className: 'sub', textContent: 'Profile not built yet.' })
-      : el('div', { className: 'sub', textContent: `Profile updated ${when(c.profile_updated_at)}` }));
+const PAGES = {
+  orders: {
+    title: 'Orders', empty: 'No orders yet.',
+    head: ['Order', 'Customer', 'Items', 'Total', 'Status', 'Placed'],
+    filters: [['all', 'All'], ['confirmed', 'Confirmed'], ['shipped', 'Shipped'], ['delivered', 'Delivered'], ['cancelled', 'Cancelled']],
+    path: (id) => `/sessions/${encodeURIComponent(id)}/orders`,
+    sort: (a, b) => b.created_at - a.created_at,
+    match: (r, f) => f === 'all' || r.status === f,
+    text: (r) => `${r.id} ${r.customer_name || ''} ${r.phone || ''} ${r.address || ''} ${r.notes || ''} ${r._biz} ${(r.items || []).map((i) => i.name).join(' ')}`,
+    row(o) {
+      const select = el('select', {}, ...Object.entries(STATUS_LABEL).map(([v, t]) => el('option', { value: v, textContent: t, selected: v === o.status })));
+      const statusDd = enhanceSelect(select, { inline: true, small: true });
+      select.onchange = async () => {
+        select.disabled = true;
+        try { await api(`/sessions/${encodeURIComponent(o._biz)}/orders/${o.id}`, { method: 'PATCH', body: JSON.stringify({ status: select.value }) }); o.status = select.value; }
+        catch (err) { alert(err.message); select.value = o.status; }
+        select.disabled = false;
+      };
+      const items = (o.items || []).map((i) => `${i.quantity} × ${i.name}`).join(', ') || '-';
+      const detail = el('div', { className: 'det' },
+        el('ul', {}, ...(o.items || []).map((i) => el('li', { textContent: `${i.quantity} × ${i.name}${i.price ? ` (${i.price})` : ''}` }))),
+        el('div', {}, el('b', { textContent: 'Address: ' }), o.address || '-'),
+        o.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), o.notes) : null);
+      return pair(`o:${o._biz}:${o.id}`, 6, [
+        td(two(`#${o.id}`, o._biz)), td(two(o.customer_name || 'Unknown', o.phone ? `+${o.phone}` : '')),
+        td(el('div', { className: 'clip', textContent: items }), 'wrapc'), td(money(o.total)), td(statusDd), td(when(o.created_at), 'dim')], detail);
+    },
+  },
+  customers: {
+    title: 'Customers', empty: 'No customers yet.',
+    head: ['Customer', 'Business', 'Orders', 'Profile', 'Address', 'Last message'],
+    filters: [['all', 'All'], ['regular', 'Regular'], ['complaints', 'Complaints']],
+    path: (id) => `/sessions/${encodeURIComponent(id)}/customers`,
+    sort: (a, b) => b.last_seen - a.last_seen,
+    match: (r, f) => f === 'all' || (f === 'regular' ? (r.profile?.regular_customer || r.order_count > 1) : r.profile?.complaints?.length > 0),
+    text: (r) => `${r.name || ''} ${r.profile?.name || ''} ${r.phone || ''} ${r.profile?.address || ''} ${r._biz}`,
+    row(c) {
+      const p = c.profile || {};
+      const chips = [];
+      if (p.regular_customer || c.order_count > 1) chips.push(el('span', { className: 'chip good', textContent: 'Regular' }));
+      if (p.language) chips.push(el('span', { className: 'chip', textContent: p.language }));
+      if (p.complaints?.length) chips.push(el('span', { className: 'chip bad', textContent: `${p.complaints.length} complaint${p.complaints.length > 1 ? 's' : ''}` }));
+      const list = (label, items) => (items?.length ? el('div', {}, el('b', { textContent: `${label}: ` }), items.join('; ')) : null);
+      const detail = el('div', { className: 'det' },
+        list('Likes', p.preferences), list("Doesn't like", p.dislikes), list('Complaints', p.complaints),
+        p.notes ? el('div', {}, el('b', { textContent: 'Notes: ' }), p.notes) : null,
+        el('div', { className: 'hint', textContent: c.profile_updated_at ? `Profile updated ${when(c.profile_updated_at)}` : 'Profile not built yet.' }));
+      return pair(`c:${c._biz}:${c.chat_id}`, 6, [
+        td(two(p.name || c.name || 'Unknown', [c.phone ? `+${c.phone}` : '', p.alternate_phone ? `alt ${p.alternate_phone}` : ''].filter(Boolean).join(' · ') || 'Number hidden by WhatsApp')),
+        td(c._biz, 'dim'), td(String(c.order_count || 0)), td(el('div', { className: 'chips' }, chips)),
+        td(el('div', { className: 'clip', textContent: p.address || '-' }), 'wrapc'), td(when(c.last_seen), 'dim')], detail);
+    },
+  },
+  questions: {
+    title: 'Questions', empty: 'No questions yet.',
+    head: ['Question', 'Customer', 'What was asked', 'Status', 'Asked', ''],
+    filters: [['all', 'All'], ['open', 'Waiting'], ['answered', 'Answered']],
+    path: (id) => `/sessions/${encodeURIComponent(id)}/questions`,
+    sort: (a, b) => b.created_at - a.created_at,
+    match: (r, f) => f === 'all' || r.status === f,
+    text: (r) => `${r.id} ${r.customer_name || ''} ${r.question} ${r.answer || ''} ${r._biz}`,
+    row(q) {
+      const key = `q:${q._biz}:${q.id}`;
+      const detail = el('div', { className: 'det' },
+        el('div', {}, el('b', { textContent: 'Question: ' }), q.question),
+        q.answer ? el('div', {}, el('b', { textContent: 'Manager said: ' }), q.answer) : null,
+        q.reply_sent ? el('div', {}, el('b', { textContent: 'Sent to customer: ' }), q.reply_sent) : null,
+        q.status === 'open' ? answerBox(q) : null);
+      const open = q.status === 'open';
+      const btn = el('button', { type: 'button', className: open ? '' : 'alt', textContent: open ? 'Answer' : 'View' });
+      const rows = pair(key, 6, [
+        td(two(`#${q.id}`, q._biz)), td(q.customer_name || 'A customer'), td(el('div', { className: 'clip', textContent: q.question }), 'wrapc'),
+        td(el('span', { className: 'pill ' + (open ? 'qr' : 'ready'), textContent: open ? 'Waiting' : 'Answered' })), td(when(q.created_at), 'dim'), td(btn)], detail);
+      btn.onclick = () => rows[0].toggle();
+      return rows;
+    },
+  },
+  logs: {
+    title: 'Logs', empty: 'No logs yet.', refetchOnFilter: true,
+    head: ['Time', 'Level', 'Business', 'Message'],
+    filters: [['all', 'All'], ['error', 'Errors'], ['warn', 'Warnings']],
+    path: (id) => (id === '__server' ? '/logs' : `/sessions/${encodeURIComponent(id)}/logs`),
+    sort: (a, b) => new Date(b.at) - new Date(a.at),
+    match: (r, f) => f === 'all' || r.level === f,
+    text: (r) => `${r.message} ${r._biz}`,
+    row(l) {
+      return [el('tr', { className: `logrow ${l.level}` },
+        td(new Date(l.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }), 'dim'),
+        td(el('span', { className: `lv ${l.level}`, textContent: l.level })), td(l._biz === '__server' ? 'Server' : l._biz, 'dim'),
+        td(l.message, 'mono'))];
+    },
+  },
+};
+for (const k of DATA_VIEWS) PAGES[k].iconSvg = ICON[`page_${k}`] || '';
+
+function openDataPage(kind) {
+  const cfg = PAGES[kind];
+  dvKind = kind; dvFilter = 'all'; dvRows = [];
+  $('#dvTitle').textContent = cfg.title; $('#dvCount').textContent = '';
+  $('#dvIcon').innerHTML = cfg.iconSvg;
+  $('#dvSearch').value = '';
+  $('#dvHead').replaceChildren(el('tr', {}, ...cfg.head.map((h) => el('th', { textContent: h }))));
+  buildFilters();
+  const ids = lastList.map((b) => b.id);
+  if (dvBizSel !== 'all' && dvBizSel !== '__server' && !ids.includes(dvBizSel)) dvBizSel = 'all';
+  const opts = [['all', ids.length > 1 ? 'All businesses' : 'Business'], ...ids.map((i) => [i, i])];
+  if (kind === 'logs' && isAdminUser()) opts.push(['__server', 'Server (no business)']);
+  if (dvBizSel === '__server' && kind !== 'logs') dvBizSel = 'all';
+  $('#dvBiz').replaceChildren(...opts.map(([v, t]) => el('option', { value: v, textContent: t, selected: v === dvBizSel })));
+  $('#dvAllWrap').hidden = !(kind === 'logs' && isAdminUser());
+  loadData();
 }
 
-function questionItem(q) {
-  return el('div', { className: 'item' },
-    el('div', { className: 'top' },
-      el('b', { textContent: `#${q.id} from ${q.customer_name || 'a customer'}` }),
-      el('span', { className: 'pill ' + (q.status === 'open' ? 'qr' : 'ready'), textContent: q.status === 'open' ? 'Waiting' : 'Answered' })),
-    el('div', { className: 'sub', textContent: when(q.created_at) }),
-    el('div', {}, el('b', { textContent: 'Question: ' }), q.question),
-    q.answer ? el('div', {}, el('b', { textContent: 'Manager said: ' }), q.answer) : null,
-    q.reply_sent ? el('div', {}, el('b', { textContent: 'Sent to customer: ' }), q.reply_sent) : null,
-    q.status === 'open' ? answerBox(q) : null);
+function buildFilters() {
+  $('#dvFilters').replaceChildren(...PAGES[dvKind].filters.map(([v, label]) => {
+    const b = el('button', { type: 'button', className: 'f' + (v === dvFilter ? ' on' : ''), textContent: label });
+    b.dataset.f = v;
+    b.onclick = () => {
+      dvFilter = v;
+      document.querySelectorAll('#dvFilters .f').forEach((x) => x.classList.toggle('on', x.dataset.f === v));
+      if (PAGES[dvKind].refetchOnFilter) loadData(); else renderData();
+    };
+    return b;
+  }));
 }
 
-// Logs: this business's lines, or server-wide lines (startup, database, errors).
-const logView = { server: false, errorsOnly: false, all: false };
-async function showLogs() {
-  const body = $('#dataBody');
-  const scope = el('select', {},
-    el('option', { value: 'biz', textContent: `This business (${dataFor})`, selected: !logView.server }),
-    el('option', { value: 'server', textContent: 'Server (not tied to a business)', selected: logView.server }));
-  const errors = el('input', { type: 'checkbox', checked: logView.errorsOnly });
-  const all = el('input', { type: 'checkbox', checked: logView.all });
-  all.onchange = () => { logView.all = all.checked; showLogs(); };
-  const reload = el('button', { type: 'button', className: 'alt', textContent: 'Refresh' });
-  scope.onchange = () => { logView.server = scope.value === 'server'; showLogs(); };
-  errors.onchange = () => { logView.errorsOnly = errors.checked; showLogs(); };
-  reload.onclick = showLogs;
-  const bar = el('div', { className: 'logbar' }, scope, el('label', { className: 'check small' }, errors, 'Errors only'),
-    el('label', { className: 'check small', title: 'Railway and a local copy share one database' }, all, 'Other servers too'), reload);
-  body.replaceChildren(bar, el('div', { className: 'hint', textContent: 'Loading...' }));
-  try {
-    const path = logView.server ? '/logs' : `/sessions/${encodeURIComponent(dataFor)}/logs`;
-    const rows = await api(`${path}?limit=300${logView.errorsOnly ? '&level=error' : ''}${logView.all ? '&all=1' : ''}`);
-    const list = el('div', { className: 'logs' }, ...rows.map((l) => el('div', { className: `log ${l.level}` },
-      el('span', { className: 'when', textContent: new Date(l.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) }),
-      ...(logView.all ? [el('span', { className: 'when', textContent: l.server || '?' })] : []),
-      el('span', { className: 'msg', textContent: l.message }))));
-    body.replaceChildren(bar,
-      el('div', { className: 'hint', textContent: rows.length ? `Newest first. Showing ${rows.length} lines${logView.all ? ' from all servers' : ' from this server'}; logs are kept for 30 days.` : 'No log lines yet on this server.' }),
-      list);
-  } catch (err) {
-    body.replaceChildren(bar, el('div', { className: 'msg err', textContent: err.message }));
+let dvLoadId = 0;
+async function loadData(silent) {
+  const kind = dvKind, cfg = PAGES[kind], mine = ++dvLoadId;
+  if (!silent) $('#dvBody').replaceChildren(el('tr', { className: 'none' }, el('td', { colSpan: cfg.head.length, textContent: 'Loading...' })));
+  let targets = dvBizSel === 'all' ? lastList.map((b) => b.id) : [dvBizSel];
+  if (kind === 'logs' && dvBizSel === 'all' && isAdminUser()) targets.push('__server');
+  const errors = [];
+  const extra = kind === 'logs' ? `?limit=200${dvFilter === 'error' ? '&level=error' : ''}${$('#dvAll').checked && isAdminUser() ? '&all=1' : ''}` : '';
+  const results = await Promise.all(targets.map(async (id) => {
+    try { return (await api(cfg.path(id) + extra)).map((r) => ({ ...r, _biz: id })); }
+    catch (err) { if (err.message !== 'unauthorized') errors.push(`${id}: ${err.message}`); return []; }
+  }));
+  if (mine !== dvLoadId || kind !== dvKind) return; // a newer load or another page took over
+  dvRows = results.flat().sort(cfg.sort).slice(0, 600);
+  $('#dvNote').textContent = errors.join(' · ');
+  renderData();
+}
+
+function renderData() {
+  const cfg = PAGES[dvKind];
+  const q = $('#dvSearch').value.trim().toLowerCase();
+  const shown = dvRows.filter((r) => cfg.match(r, dvFilter) && (!q || cfg.text(r).toLowerCase().includes(q)));
+  $('#dvCount').textContent = shown.length;
+  if (dvKind === 'questions') { // count on the "Waiting" filter
+    const waiting = dvRows.filter((r) => r.status === 'open').length;
+    const b = document.querySelector('#dvFilters .f[data-f=open]'); if (b) b.textContent = waiting ? `Waiting (${waiting})` : 'Waiting';
   }
+  const rows = shown.flatMap((r) => cfg.row(r));
+  const none = el('tr', { className: 'none' }, el('td', { colSpan: cfg.head.length, textContent: dvRows.length ? 'Nothing matches.' : cfg.empty }));
+  $('#dvBody').replaceChildren(...(rows.length ? rows : [none]));
 }
+
+$('#dvSearch').oninput = renderData;
+$('#dvRefresh').onclick = () => loadData();
+$('#dvBiz').onchange = () => { dvBizSel = $('#dvBiz').value; loadData(); };
+$('#dvAll').onchange = () => loadData();
+setInterval(() => {
+  if (DATA_VIEWS.includes(view) && !document.activeElement?.closest?.('.expand') && !document.activeElement?.closest?.('select')) loadData(true);
+}, 8000);
+
+// "Customers & orders" on a business jumps to its orders.
+function openData(id) { dvBizSel = id; setView('orders'); }
 
 // Answer a waiting question here; the AI can tidy up tone and grammar before sending.
 function answerBox(q) {
-  const text = el('textarea', { placeholder: 'Your answer, e.g. "nahi, sirf shoes bechte hain abhi"', maxLength: 2000, rows: 2 });
+  const text = el('textarea', { placeholder: 'Your answer', maxLength: 2000, rows: 2 });
   const polish = el('input', { type: 'checkbox', checked: true });
   const btn = el('button', { type: 'button', textContent: 'Send to customer' });
   const out = el('div', { className: 'msg' });
@@ -922,15 +1871,15 @@ function answerBox(q) {
     if (!text.value.trim()) { out.className = 'msg err'; out.textContent = 'Type an answer first.'; return; }
     btn.disabled = true; text.disabled = true;
     out.className = 'msg';
-    out.textContent = polish.checked ? 'The AI is writing the reply and sending it...' : 'Sending...';
+    out.textContent = polish.checked ? 'Sending...' : 'Sending...';
     try {
-      const r = await api(`/sessions/${encodeURIComponent(dataFor)}/questions/${q.id}/answer`, {
+      const r = await api(`/sessions/${encodeURIComponent(q._biz)}/questions/${q.id}/answer`, {
         method: 'POST', body: JSON.stringify({ answer: text.value, polish: polish.checked }),
       });
       out.className = 'msg ok';
       out.textContent = `Sent to ${q.customer_name || 'the customer'}:\n${r.sent}`;
-      setTimeout(() => { if (dataTab === 'questions') showTab('questions'); }, 2500);
-      lastJson = ''; refresh(); // update the "waiting" badge on the card
+      setTimeout(() => { if (dvKind === 'questions') loadData(true); }, 2500);
+      lastJson = ''; refresh(); // update the "waiting" counts
     } catch (err) {
       out.className = 'msg err'; out.textContent = err.message;
       btn.disabled = false; text.disabled = false;
@@ -938,17 +1887,294 @@ function answerBox(q) {
   };
   return el('div', { className: 'answer' },
     el('b', { textContent: 'Your answer' }),
-    q.manager_msg_id ? el('div', { className: 'sub', textContent: 'Sent to the manager on WhatsApp too. Whoever answers first, here or there, is sent.' }) : null,
     text,
-    el('label', { className: 'check small' }, polish, 'Let the AI fix tone and grammar, and reply in the customer\'s language'),
+    el('label', { className: 'check small' }, polish, 'Polish with AI'),
     el('div', { className: 'row' }, btn),
     out);
 }
 
+// ---------------------------------------------------------------------------
+// AI usage report: one panel, used on the Usage page (all businesses, by user) and on each business's Usage tab.
+// ---------------------------------------------------------------------------
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(Math.round(n)));
+const usd = (n) => (n == null ? '-' : n === 0 ? '$0' : n < 1 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
+const dur = (n) => (n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(1)} s`);
+const KIND_LABEL = { reply: 'Customer replies', profile: 'Customer profiles', voice: 'Voice notes', test: 'Test replies' };
+const allTokens = (r) => (r.input || 0) + (r.output || 0) + (r.cacheRead || 0) + (r.cacheWrite || 0);
+const hasCost = (r) => (r.costed || 0) > 0;
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// business: fix the panel to one business (the business tab). businessSelect: let the user pick one.
+// byBusiness / byUser: which breakdown tables to show. onData: called with each response.
+function usagePanel({ business = null, businessSelect = false, byBusiness = false, byUser = false, onData = null } = {}) {
+  const st = { days: 30, metric: 'requests', data: null, biz: business || 'all' };
+  const root = el('div', { className: 'usagepanel' });
+  const rangeBtns = [[1, '24 hours'], [7, '7 days'], [30, '30 days'], [90, '90 days']].map(([d, label]) => {
+    const b = el('button', { type: 'button', className: 'f' + (d === st.days ? ' on' : ''), textContent: label });
+    b.onclick = () => { st.days = d; rangeBtns.forEach((x) => x.classList.toggle('on', x === b)); load(); };
+    return b;
+  });
+  const bizSel = businessSelect ? el('select') : null;
+  const bizDd = bizSel ? enhanceSelect(bizSel, { inline: true }) : null;
+  if (bizSel) bizSel.onchange = () => { st.biz = bizSel.value; load(); };
+  const setup = el('div', { className: 'msg err' });
+  const kpis = el('div', { className: 'rv-cards kpis' });
+  const chartEl = el('div', { className: 'uchart' });
+  const legend = el('div', { className: 'legend' });
+  const metricBtns = [['requests', 'Requests'], ['tokens', 'Tokens'], ['cost', 'Cost']].map(([m, label]) => {
+    const b = el('button', { type: 'button', className: m === st.metric ? 'on' : '', textContent: label });
+    b.onclick = () => { st.metric = m; metricBtns.forEach((x) => x.classList.toggle('on', x === b)); if (st.data) drawChart(); };
+    return b;
+  });
+  const tables = el('div', { className: 'u-grid' });
+  const recentBody = el('tbody');
+  root.append(
+    el('div', { className: 'toolbar2' }, ...rangeBtns, el('span', { className: 'grow' }), bizDd),
+    setup, kpis,
+    el('div', { className: 'upanel' }, el('div', { className: 'uhead' }, el('h3', { textContent: 'Over time' }), el('div', { className: 'seg' }, ...metricBtns)), chartEl, legend),
+    tables,
+    el('div', { className: 'upanel' }, el('div', { className: 'uhead' }, el('h3', { textContent: 'Recent requests' })),
+      el('div', { className: 'tablewrap' }, el('table', { className: 'tbl' },
+        el('thead', {}, el('tr', {}, ...['Time', 'Business', 'Type', 'Model', 'Tokens', 'Time taken', 'Result'].map((h) => el('th', { textContent: h })))), recentBody))));
+
+  function refreshBusinesses() {
+    if (!bizSel) return;
+    const ids = lastList.map((b) => b.id);
+    if (st.biz !== 'all' && !ids.includes(st.biz)) st.biz = 'all';
+    bizSel.replaceChildren(...[['all', ids.length > 1 ? 'All businesses' : 'Business'], ...ids.map((i) => [i, i])].map(([v, t]) => el('option', { value: v, textContent: t, selected: v === st.biz })));
+  }
+  const query = () => `days=${st.days}&business=${encodeURIComponent(st.biz)}`;
+
+  async function load() {
+    try { st.data = await api(`/usage?${query()}&tz=${encodeURIComponent(TZ)}`); }
+    catch (err) { if (err.message !== 'unauthorized') setup.textContent = err.message; return; }
+    if (onData) onData(st.data);
+    render();
+  }
+  async function exportCsv() {
+    const res = await fetch(`/api/usage/export?${query()}`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const a = el('a', { href: URL.createObjectURL(await res.blob()), download: `ai-usage${st.biz !== 'all' ? `-${st.biz}` : ''}-last-${st.days}-days.csv` });
+    document.body.append(a); a.click(); a.remove();
+  }
+
+  function render() {
+    const d = st.data, t = d.totals || { requests: 0, ok: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, ms: 0, cost: 0, costed: 0 };
+    const c = d.config || {};
+    setup.textContent = c.aiReady ? '' : `AI is not set up on this server (missing ${c.aiEnvKey}).`;
+    const failed = t.requests - t.ok;
+    const card = (l, v, sub) => el('div', { className: 'rv-card' }, el('div', { className: 'l', textContent: l }), el('div', { className: 'v', textContent: v }), sub ? el('div', { className: 's', textContent: sub }) : null);
+    const costSub = !c.pricesSet && !hasCost(t) ? 'Set AI_PRICE_* in env' : t.costed < t.requests ? `${t.costed}/${t.requests} priced` : 'Estimated, USD';
+    kpis.replaceChildren(
+      card('Requests', t.requests.toLocaleString(), failed ? `${failed} failed` : 'None failed'),
+      card('Input tokens', compact(t.input + t.cacheRead + t.cacheWrite), t.cacheRead ? `${compact(t.cacheRead)} from cache` : ''),
+      card('Output tokens', compact(t.output), ''),
+      card('Estimated cost', hasCost(t) ? usd(t.cost) : 'Not set', costSub),
+      card('Avg response', t.requests ? dur(t.ms / t.requests) : '-', ''),
+      card('Success rate', t.requests ? `${Math.round((t.ok / t.requests) * 1000) / 10}%` : '-', ''));
+    drawChart();
+
+    const num = (v) => el('td', { className: 'num', textContent: v });
+    const table = (title, head, rows) => el('div', { className: 'upanel' }, el('div', { className: 'uhead' }, el('h3', { textContent: title })),
+      el('div', { className: 'tablewrap' }, el('table', { className: 'tbl' },
+        el('thead', {}, el('tr', {}, ...head.map((h, i) => el('th', { className: i ? 'num' : '', textContent: h })))),
+        el('tbody', {}, ...(rows.length ? rows : [el('tr', { className: 'none' }, el('td', { colSpan: head.length, textContent: 'No requests in this period.' }))])))));
+    const stats = (r) => [num(r.requests.toLocaleString()), num(compact(allTokens(r))), num(hasCost(r) ? usd(r.cost) : '-'), num(String(r.requests - r.ok)), num(r.requests ? dur(r.ms / r.requests) : '-')];
+    const row = (label, r) => el('tr', {}, el('td', { textContent: label }), ...stats(r));
+    const head = (first) => [first, 'Requests', 'Tokens', 'Cost', 'Failed', 'Avg time'];
+    const blocks = [];
+    if (byUser) blocks.push(table('By user', ['User', 'Businesses', 'Requests', 'Tokens', 'Cost', 'Failed', 'Avg time'], (d.byUser || []).map((r) => el('tr', {},
+      el('td', {}, el('div', { className: 'two' }, el('b', { textContent: r.name }), r.email ? el('small', { textContent: r.email }) : null)),
+      num(String(r.businesses.length)), ...stats(r)))));
+    if (byBusiness) blocks.push(table('By business', head('Business'), d.byBusiness.map((r) => row(r._id || '(none)', r))));
+    blocks.push(table('By type', head('Type'), d.byKind.map((r) => row(KIND_LABEL[r._id] || r._id, r))));
+    blocks.push(table('By model', head('Model'), d.byModel.map((r) => row(r._id.model || '?', r))));
+    tables.replaceChildren(...blocks);
+
+    const rows = d.recent.map((r) => el('tr', {},
+      el('td', { className: 'dim', textContent: when(r.at) }), el('td', { textContent: r.business || '-' }), el('td', { textContent: KIND_LABEL[r.kind] || r.kind }),
+      el('td', { className: 'dim', textContent: r.model }),
+      el('td', { className: 'dim', textContent: `${compact((r.input_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0))} in · ${compact(r.output_tokens || 0)} out` }),
+      el('td', { className: 'dim', textContent: dur(r.ms || 0) }),
+      el('td', {}, el('span', { className: 'pill ' + (r.ok ? 'ready' : 'error'), textContent: r.ok ? 'OK' : 'Failed' }), r.ok ? null : el('span', { className: 'err-sub', textContent: r.error || '' }))));
+    recentBody.replaceChildren(...(rows.length ? rows : [el('tr', { className: 'none' }, el('td', { colSpan: 7, textContent: 'No requests in this period.' }))]));
+  }
+
+  // Bars per day. requests: ok + failed; tokens: input + output; cost: one colour.
+  function drawChart() {
+    const d = st.data, W = 900, H = 200, L = 40, B = 22, T = 8;
+    const byDay = new Map(d.daily.map((r) => [r._id, r]));
+    const days = [];
+    for (let i = st.days - 1; i >= 0; i--) days.push(new Date(Date.now() - i * 864e5).toLocaleDateString('en-CA', { timeZone: TZ }));
+    const series = {
+      requests: (r) => [{ v: r.ok || 0, color: 'var(--text)' }, { v: (r.requests || 0) - (r.ok || 0), color: 'var(--bad)' }],
+      tokens: (r) => [{ v: (r.input || 0) + (r.cacheRead || 0) + (r.cacheWrite || 0), color: 'var(--text-2)' }, { v: r.output || 0, color: 'var(--text)' }],
+      cost: (r) => [{ v: r.cost || 0, color: 'var(--text)' }],
+    }[st.metric];
+    const key = { requests: [['Successful', 'var(--text)'], ['Failed', 'var(--bad)']], tokens: [['Input', 'var(--text-2)'], ['Output', 'var(--text)']], cost: [['Estimated cost (USD)', 'var(--text)']] }[st.metric];
+    legend.replaceChildren(...key.map(([n, col]) => el('span', {}, Object.assign(el('i'), { style: `background:${col}` }), n)));
+    const totals = days.map((k) => series(byDay.get(k) || {}).reduce((a, x) => a + x.v, 0));
+    const max = Math.max(...totals, st.metric === 'cost' ? 0.0001 : 4);
+    const fmtY = (v) => (st.metric === 'cost' ? usd(v) : compact(v));
+    const n = (tag, attrs, ...kids) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); kids.forEach((x) => e.append(x)); return e; };
+    const svg = n('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Usage per day' });
+    const ph = H - B - T, bw = (W - L) / days.length;
+    const grid = n('g', { class: 'grid' });
+    for (let i = 0; i <= 4; i++) {
+      const y = T + ph - (ph * i) / 4;
+      grid.append(n('line', { x1: L, x2: W, y1: y, y2: y }), Object.assign(n('text', { x: L - 6, y: y + 3, 'text-anchor': 'end' }), { textContent: fmtY((max * i) / 4) }));
+    }
+    svg.append(grid);
+    const step = Math.ceil(days.length / 8);
+    days.forEach((k, i) => {
+      const r = byDay.get(k) || {};
+      let y = T + ph;
+      const g = n('g', {});
+      g.append(n('title', {}, document.createTextNode(`${k}: ${st.metric === 'cost' ? usd(totals[i]) : totals[i].toLocaleString()} ${st.metric === 'requests' ? 'requests' : st.metric === 'tokens' ? 'tokens' : ''}`.trim())));
+      for (const part of series(r)) {
+        const h = (part.v / max) * ph;
+        if (h <= 0) continue;
+        y -= h;
+        g.append(n('rect', { x: L + i * bw + bw * 0.15, y, width: Math.max(1, bw * 0.7), height: h, rx: 2, fill: part.color, opacity: 0.9 }));
+      }
+      g.append(n('rect', { x: L + i * bw, y: T, width: bw, height: ph, fill: 'transparent' }));
+      svg.append(g);
+      if (i % step === 0 && (days.length - 1 - i >= step / 2 || i === days.length - 1)) svg.append(Object.assign(n('text', { x: L + i * bw + bw / 2, y: H - 6, 'text-anchor': 'middle' }), { textContent: new Date(`${k}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' }) }));
+    });
+    chartEl.replaceChildren(svg);
+  }
+  return { root, load, exportCsv, refreshBusinesses };
+}
+
+// The Usage page: every business you can see, with a per-user breakdown.
+let uPage = null;
+function openUsage() {
+  if (!uPage) {
+    uPage = usagePanel({ businessSelect: true, byBusiness: true, byUser: true, onData: (d) => { $('#uModel').textContent = d.config?.model ? `${d.config.label} · ${d.config.model}` : ''; } });
+    $('#uPageBody').replaceChildren(uPage.root);
+  }
+  uPage.refreshBusinesses();
+  uPage.load();
+}
+$('#uRefresh').onclick = () => uPage?.load();
+$('#uExport').onclick = async () => {
+  const btn = $('#uExport'); btn.disabled = true;
+  try { await uPage.exportCsv(); } catch (err) { alert(err.message); }
+  btn.disabled = false;
+};
+
+// ---------------------------------------------------------------------------
+// Access tab (admins): who owns this business, and giving its owner a login.
+// ---------------------------------------------------------------------------
+function makePassword() {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alike characters
+  const bytes = crypto.getRandomValues(new Uint32Array(14));
+  return [...bytes].map((n) => chars[n % chars.length]).join('');
+}
+async function copyText(text, btn) {
+  const label = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch { btn.textContent = 'Copy failed'; }
+  setTimeout(() => { btn.textContent = label; }, 1600);
+}
+
+async function showBusinessAccess(created) {
+  const box = $('#rvAccess'), id = rulesFor;
+  let info, users;
+  try { [info, users] = await Promise.all([api(`/sessions/${encodeURIComponent(id)}/access`), api('/admin/users')]); }
+  catch (err) { box.replaceChildren(el('div', { className: 'msg err', textContent: err.message })); return; }
+  if (rulesFor !== id) return;
+  const o = info.owner;
+  const sec = (title, ...kids) => el('div', { className: 'upanel accsec' }, el('div', { className: 'uhead' }, el('h3', { textContent: title })), ...kids);
+
+  // Who owns it now.
+  const ownerCard = el('div', { className: 'owner' },
+    el('span', { className: 'avatar', textContent: (o?.name || '?').charAt(0).toUpperCase() }),
+    el('div', { className: 'ci' }, el('b', { textContent: o ? `${o.name}${o.id === me.id ? ' (you)' : ''}` : 'No owner' }), el('small', { textContent: o ? o.email : 'Only admins can open this business.' })),
+    o ? el('span', { className: `role ${o.role}`, textContent: o.role.replace('_', ' ') }) : null);
+
+  // Create a login for the owner.
+  const name = el('input', { placeholder: 'Owner name', maxLength: 80, autocomplete: 'off' });
+  const email = el('input', { type: 'email', placeholder: 'owner@email.com', autocomplete: 'off' });
+  const pass = el('input', { placeholder: 'Temporary password (10+ characters)', autocomplete: 'off', value: makePassword(), spellcheck: false });
+  const gen = el('button', { type: 'button', className: 'alt', textContent: 'Generate' }); gen.onclick = () => { pass.value = makePassword(); };
+  const msg = el('div', { className: 'msg err' });
+  const go = el('button', { textContent: 'Create login and give access' });
+  const form = el('form', { className: 'accform' },
+    el('label', {}, 'Name', name), el('label', {}, 'Email', email),
+    el('label', {}, 'Password', el('div', { className: 'row' }, pass, gen)),
+    msg, el('div', { className: 'row' }, go));
+  form.onsubmit = async (e) => {
+    e.preventDefault(); go.disabled = true; msg.textContent = '';
+    try {
+      await api(`/sessions/${encodeURIComponent(id)}/access`, { method: 'POST', body: JSON.stringify({ name: name.value, email: email.value, password: pass.value }) });
+      lastJson = ''; refresh();
+      showBusinessAccess({ email: email.value.trim().toLowerCase(), password: pass.value });
+    } catch (err) { msg.textContent = err.message; go.disabled = false; }
+  };
+
+  // What to send the owner, shown once.
+  let credsBox = null;
+  if (created) {
+    const text = `Sign in: ${location.origin}\nEmail: ${created.email}\nPassword: ${created.password}\n\nYou can change the password after signing in.`;
+    const copy = el('button', { type: 'button', textContent: 'Copy' }); copy.onclick = () => copyText(text, copy);
+    credsBox = el('div', { className: 'creds' },
+      el('b', { textContent: 'Login created. Send this to the owner:' }),
+      el('pre', { textContent: text }),
+      el('div', { className: 'row' }, copy),
+      el('small', { textContent: 'The password is shown only now.' }));
+  }
+
+  // Move it to someone who already has an account.
+  const pick = el('select', {}, ...users.filter((u) => u.status === 'active' && u.id !== o?.id).map((u) => el('option', { value: u.id, textContent: `${u.name} (${u.email})` })));
+  const move = el('button', { type: 'button', className: 'alt', textContent: 'Transfer' });
+  const moveMsg = el('div', { className: 'msg err' });
+  const pickDd = enhanceSelect(pick);
+  move.onclick = async () => {
+    if (!pick.value) return;
+    const who = pick.options[pick.selectedIndex].textContent;
+    if (!confirm(`Give "${id}" to ${who}?`)) return;
+    move.disabled = true; moveMsg.textContent = '';
+    try { await api(`/sessions/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify({ userId: pick.value }) }); lastJson = ''; refresh(); showBusinessAccess(); }
+    catch (err) { moveMsg.textContent = err.message; move.disabled = false; }
+  };
+
+  box.replaceChildren(el('div', { className: 'accbox' },
+    sec('Owner', ownerCard),
+    ...(credsBox ? [credsBox] : []),
+    sec('Create a login for the owner', form),
+    ...(pick.options.length ? [sec('Or give it to an existing user', el('div', { className: 'row' }, pickDd, move), moveMsg)] : [])));
+}
+
+// The business page's Usage tab: the same report for just that business.
+let rvUsage = null; // { id, panel }
+function showBusinessUsage() {
+  if (!rvUsage || rvUsage.id !== rulesFor) {
+    rvUsage = { id: rulesFor, panel: usagePanel({ business: rulesFor }) };
+    $('#rvUsage').replaceChildren(rvUsage.panel.root);
+  }
+  rvUsage.panel.load();
+}
+setInterval(() => {
+  if (view === 'usage') uPage?.load(true);
+  else if (view === 'rules' && rvTab === 'usage') rvUsage?.panel.load(true);
+}, 30000);
+
+// Dropdowns for the fixed fields.
+attachNumberPicker($('#rManager'), () => rulesFor);
+enhanceSelect($('#dvBiz'), { inline: true });
+
 let timer;
-function start() {
-  if (!key) return showLogin();
-  $('#login').hidden = true; $('#app').hidden = false;
+async function start() {
+  if (!me) {
+    try { me = await api('/auth/me'); } catch { return showLogin(); }
+  }
+  const admin = me.role === 'admin' || me.role === 'super_admin';
+  $('#meAvatar').textContent = (me.name || '?').trim().charAt(0).toUpperCase();
+  $('#meName').textContent = me.name; $('#meRole').textContent = me.role.replace('_', ' '); $('#meRole').className = `role ${me.role}`;
+  $('#usersBtn').hidden = !admin; $('#adminLabel').hidden = !admin; $('#restartAll').hidden = !admin; $('#tabAccess').hidden = !admin;
+  $('#me').hidden = false; $('#login').hidden = true; view = 'biz'; setView('biz');
+  if (admin) api('/admin/users').then((u) => { const n = u.filter((x) => x.status === 'pending').length; $('#pendingBadge').hidden = !n; $('#pendingBadge').textContent = n; }).catch(() => {});
   lastJson = '';
   refresh();
   clearInterval(timer);

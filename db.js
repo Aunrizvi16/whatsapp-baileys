@@ -40,6 +40,9 @@ async function init() {
     // Baileys has no WhatsApp Web keeping chats for us, so we keep what the app needs:
     waMessages: db.collection('wa_messages'), // recent messages per chat (for the AI's history)
     waChats: db.collection('wa_chats'), // one per chat: name and last message time (contacts picker, send by name)
+    aiUsage: db.collection('ai_usage'), // one document per AI call: tokens, time, outcome, cost
+    users: db.collection('users'), // accounts (_id = uuid): email, password hash, role, status
+    authSessions: db.collection('auth_sessions'), // sign-in sessions (_id = hash of the cookie token)
   };
   await Promise.all([
     col.customers.createIndex({ business: 1, chat_id: 1 }, { unique: true }),
@@ -57,6 +60,13 @@ async function init() {
     col.waMessages.createIndex({ business: 1, chat_id: 1, order: -1 }),
     col.waChats.createIndex({ business: 1, chat_id: 1 }, { unique: true }),
     col.waChats.createIndex({ business: 1, t: -1 }),
+    col.aiUsage.createIndex({ business: 1, at: -1 }),
+    ttlIndex(col.aiUsage, TTL_DAYS.usage),
+    col.users.createIndex({ email: 1 }, { unique: true }),
+    // At most one super admin can ever exist, enforced by the database itself.
+    col.users.createIndex({ role: 1 }, { unique: true, partialFilterExpression: { role: 'super_admin' }, name: 'one_super_admin' }),
+    col.authSessions.createIndex({ user_id: 1 }),
+    col.authSessions.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
     ttlIndex(col.waMessages, TTL_DAYS.messages),
     // MongoDB deletes these by itself once they're older than the limit.
     ttlIndex(col.transcripts, TTL_DAYS.transcripts),
@@ -72,6 +82,7 @@ const TTL_DAYS = {
   images: Number(process.env.IMAGE_RETENTION_DAYS || 7),
   logs: Number(process.env.LOG_RETENTION_DAYS || 30),
   messages: Number(process.env.MESSAGE_RETENTION_DAYS || 90),
+  usage: Number(process.env.USAGE_RETENTION_DAYS || 400),
 };
 
 // Expire documents `days` after their `at` date. If the limit was changed, update the index.
@@ -320,8 +331,34 @@ async function saveCachedImage(business, msgId, image) {
 
 // ---- business list: a card exists until it's deleted on purpose ----
 
-async function addBusiness(business, now = Date.now()) {
-  await col.businesses.updateOne({ _id: business }, { $setOnInsert: { created_at: now } }, { upsert: true });
+// owner: id of the user who created the card (null for cards found on disk at startup).
+async function addBusiness(business, owner = null, now = Date.now()) {
+  await col.businesses.updateOne({ _id: business }, { $setOnInsert: { created_at: now, owner } }, { upsert: true });
+}
+
+// Map of business name -> owner user id (or null).
+async function listBusinessOwners() {
+  const docs = await col.businesses.find({}, { projection: { owner: 1 } }).toArray();
+  return new Map(docs.map((b) => [b._id, b.owner || null]));
+}
+
+async function getBusinessOwner(business) {
+  const doc = await col.businesses.findOne({ _id: business }, { projection: { owner: 1 } });
+  return doc ? { owner: doc.owner || null } : null; // null: no such business
+}
+
+// Cards without an owner (made before accounts existed) go to `owner`.
+async function assignUnownedBusinesses(owner) {
+  const r = await col.businesses.updateMany({ owner: null }, { $set: { owner } });
+  return r.modifiedCount;
+}
+
+async function setBusinessOwner(business, owner) {
+  return (await col.businesses.updateOne({ _id: business }, { $set: { owner } })).matchedCount;
+}
+
+async function reassignBusinesses(from, to) {
+  return (await col.businesses.updateMany({ owner: from }, { $set: { owner: to } })).modifiedCount;
 }
 
 async function listBusinesses() {
@@ -357,6 +394,7 @@ async function deleteBusiness(business) {
     col.logs.deleteMany({ business }),
     col.waMessages.deleteMany({ business }),
     col.waChats.deleteMany({ business }),
+    col.aiUsage.deleteMany({ business }),
     col.businesses.deleteOne({ _id: business }),
   ]);
 }
@@ -400,7 +438,74 @@ function listWaChats(business, { since = 0, limit = 5000 } = {}) {
 
 const countWaChats = (business) => col.waChats.countDocuments({ business });
 
+// ---- accounts and sign-in sessions ----
+
+const userOut = (doc) => {
+  if (!doc) return null;
+  const { _id, ...rest } = doc;
+  return { id: _id, ...rest };
+};
+
+const createUser = (doc) => col.users.insertOne(doc);
+const findUserByEmail = async (email) => userOut(await col.users.findOne({ email }));
+const getUser = async (id) => userOut(await col.users.findOne({ _id: id }));
+const getSuperAdmin = async () => userOut(await col.users.findOne({ role: 'super_admin' }));
+const updateUser = (id, set) => col.users.updateOne({ _id: id }, { $set: set });
+const deleteUser = (id) => col.users.deleteOne({ _id: id });
+async function listUsers() {
+  return (await col.users.find({}).sort({ created_at: 1 }).toArray()).map(userOut);
+}
+
+const createAuthSession = (doc) => col.authSessions.insertOne(doc);
+const getAuthSession = (hash) => col.authSessions.findOne({ _id: hash });
+const deleteAuthSession = (hash) => col.authSessions.deleteOne({ _id: hash });
+// All of a user's sign-ins, except the one named in `keep`.
+const deleteUserSessions = (userId, keep) => col.authSessions.deleteMany(keep ? { user_id: userId, _id: { $ne: keep } } : { user_id: userId });
+
+// ---- AI usage ----
+
+const recordUsage = (doc) => col.aiUsage.insertOne(doc);
+
+const SUM = {
+  requests: { $sum: 1 },
+  ok: { $sum: { $cond: ['$ok', 1, 0] } },
+  input: { $sum: '$input_tokens' }, output: { $sum: '$output_tokens' },
+  cacheRead: { $sum: '$cache_read_tokens' }, cacheWrite: { $sum: '$cache_write_tokens' },
+  ms: { $sum: '$ms' }, cost: { $sum: '$cost' }, costed: { $sum: { $cond: [{ $ne: ['$cost', null] }, 1, 0] } },
+};
+
+// businesses: array of allowed names, or null for all. Returns totals, per-day, and breakdowns.
+async function usageReport({ businesses, since, tz = 'UTC', recent = 100 }) {
+  const match = { at: { $gte: since } };
+  if (businesses) match.business = { $in: businesses };
+  const run = (zone) => col.aiUsage.aggregate([
+    { $match: match },
+    { $facet: {
+      totals: [{ $group: { _id: null, ...SUM } }],
+      daily: [{ $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$at', timezone: zone } }, ...SUM } }, { $sort: { _id: 1 } }],
+      byBusiness: [{ $group: { _id: '$business', ...SUM } }, { $sort: { requests: -1 } }],
+      byKind: [{ $group: { _id: '$kind', ...SUM } }, { $sort: { requests: -1 } }],
+      byModel: [{ $group: { _id: { provider: '$provider', model: '$model' }, ...SUM } }, { $sort: { requests: -1 } }],
+      recent: [{ $sort: { at: -1 } }, { $limit: recent }, { $project: { _id: 0 } }],
+    } },
+  ]).toArray();
+  let out;
+  try { [out] = await run(tz); } catch { [out] = await run('UTC'); } // unknown time zone name
+  return { ...out, totals: out.totals[0] || null };
+}
+
+// Raw rows for the CSV export (newest first).
+function usageRows({ businesses, since, limit = 50000 }) {
+  const match = { at: { $gte: since } };
+  if (businesses) match.business = { $in: businesses };
+  return col.aiUsage.find(match, HIDE_ID).sort({ at: -1 }).limit(limit).toArray();
+}
+
 module.exports = {
+  recordUsage, usageReport, usageRows,
+  createUser, findUserByEmail, getUser, getSuperAdmin, updateUser, deleteUser, listUsers,
+  createAuthSession, getAuthSession, deleteAuthSession, deleteUserSessions,
+  listBusinessOwners, getBusinessOwner, assignUnownedBusinesses, reassignBusinesses, setBusinessOwner,
   saveWaMessages, recentWaMessages, getWaMessage, saveWaChats, listWaChats, countWaChats,
   init, close, ORDER_STATUSES, phoneOf,
   getCustomer, touchCustomer, countTurn, saveProfile, listCustomers,
