@@ -4,7 +4,7 @@
 // kept in sync on every save, so reading settings is instant.
 const fs = require('fs');
 const path = require('path');
-const { PROVIDERS } = require('./ai');
+const { PROVIDERS, serverAi } = require('./ai');
 const db = require('./db');
 
 const DATA_DIR = path.resolve(process.env.SESSIONS_DIR || './.wwebjs_auth');
@@ -124,17 +124,13 @@ function cleanContacts(input = {}) {
 // What the dashboard sees: the API key is replaced by a hint.
 function publicRules(id) {
   const r = getRules(id);
-  const { apiKey, voiceKey, ...ai } = r.ai;
+  const { apiKey, voiceKey, ...ai } = r.ai; // keys are never sent to the browser
+  const sv = serverAi();
   return {
     ...r,
-    ai: {
-      ...ai,
-      apiKeySet: Boolean(apiKey),
-      apiKeyHint: apiKey ? `...${apiKey.slice(-4)}` : '',
-      voiceKeyHint: voiceKey ? `...${voiceKey.slice(-4)}` : '',
-      serverKey: Object.fromEntries(Object.entries(PROVIDERS).map(([p, v]) => [p, Boolean(process.env[v.envKey])])),
-    },
-    providers: Object.fromEntries(Object.entries(PROVIDERS).map(([p, v]) => [p, { label: v.label, defaultModel: v.defaultModel, models: v.models }])),
+    ai: { ...ai, provider: sv.provider, model: sv.model },
+    // What the server is set up with (env), shown read-only.
+    server: { provider: sv.provider, label: sv.label, model: sv.model, aiReady: Boolean(process.env[sv.envKey]), aiEnvKey: sv.envKey, voiceReady: Boolean(process.env.OPENAI_API_KEY) },
   };
 }
 
@@ -161,9 +157,7 @@ function cleanRules(id, input = {}) {
   const keywords = Array.isArray(input.keywords) ? input.keywords : [];
   if (keywords.length > LIMITS.keywordRules) throw badRequest(`Max ${LIMITS.keywordRules} keyword rules.`);
   const inAi = input.ai || {};
-  const provider = inAi.provider ?? old.ai.provider;
-  if (!PROVIDERS[provider]) throw badRequest('AI provider must be Claude or ChatGPT.');
-  const newKey = String(inAi.apiKey ?? '').trim();
+  const sv = serverAi(); // provider and model come from the server's env, not from the dashboard
   const mode = input.mode === 'ai' ? 'ai' : 'rules';
 
   const rules = {
@@ -182,9 +176,9 @@ function cleanRules(id, input = {}) {
     pauseAfterHumanMinutes: cleanNumber(input.pauseAfterHumanMinutes ?? DEFAULTS.pauseAfterHumanMinutes, 'Pause after manual reply (minutes)', 0, 1440),
     contacts: cleanContacts(input.contacts),
     ai: {
-      provider,
-      model: cleanText(inAi.model, 'Model', 100) || PROVIDERS[provider].defaultModel,
-      apiKey: inAi.clearApiKey ? '' : newKey || (provider === old.ai.provider ? old.ai.apiKey : ''),
+      provider: sv.provider,
+      model: sv.model,
+      apiKey: '',
       prompt: cleanText(inAi.prompt, 'AI prompt', LIMITS.prompt),
       historyMessages: cleanNumber(inAi.historyMessages ?? DEFAULTS.ai.historyMessages, 'Messages the AI reads', 1, 50),
       maxRepliesPerHour: cleanNumber(inAi.maxRepliesPerHour ?? DEFAULTS.ai.maxRepliesPerHour, 'Max AI replies per chat per hour', 1, 200),
@@ -192,8 +186,7 @@ function cleanRules(id, input = {}) {
       managerNumber: cleanManager(inAi.managerNumber),
       transcribeVoice: inAi.transcribeVoice ?? old.ai.transcribeVoice,
       understandImages: Boolean(inAi.understandImages ?? old.ai.understandImages),
-      // Same as the main key: a new key replaces it, blank keeps it, clearVoiceKey removes it.
-      voiceKey: inAi.clearVoiceKey ? '' : String(inAi.voiceKey ?? '').trim() || old.ai.voiceKey,
+      voiceKey: '',
     },
   };
 
@@ -203,7 +196,7 @@ function cleanRules(id, input = {}) {
   rules.ai.transcribeVoice = Boolean(rules.ai.transcribeVoice);
   if (rules.enabled && mode === 'ai') {
     if (!rules.ai.prompt) throw badRequest('Write the AI prompt (about the business) before turning AI replies on.');
-    if (!rules.ai.apiKey && !process.env[PROVIDERS[provider].envKey]) throw badRequest(`Add a ${PROVIDERS[provider].label} API key before turning AI replies on.`);
+    if (!process.env[sv.envKey]) throw badRequest(`AI replies are not set up on this server yet (missing ${sv.envKey}).`);
   }
   if (rules.enabled && mode === 'rules' && !rules.welcome && !rules.fallback && !rules.keywords.length) {
     throw badRequest('Add at least one reply before turning auto-replies on.');
@@ -337,7 +330,13 @@ function fillPlaceholders(text, vars) {
   return text.replace(/\{name\}/gi, vars.name || '').replace(/\s+([,.!?])/g, '$1').replace(/ {2,}/g, ' ').trim();
 }
 
-module.exports = { isPaused,
+// The on/off switch: keeps every other setting as it is and runs the same checks as a full save
+// (for example, AI replies can't be turned on without business info).
+async function setEnabled(id, enabled) {
+  return saveRules(id, { ...getRules(id), enabled: Boolean(enabled) });
+}
+
+module.exports = { setEnabled, isPaused,
   load, businessIds, getRules, publicRules, cleanRules, saveRules, deleteRules, decideReplies, canSendFixed,
   aiAllowed, noteAiReply, pauseChat, fillPlaceholders, contactAllowed, DEFAULTS,
 };

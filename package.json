@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=../atlas-credentials.env --env-file-if-exists=.env server.js",
-    "test": "node test/run-all.js"
+    "test": "node test/run-all.js",
+    "test:auth": "node test/auth-test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

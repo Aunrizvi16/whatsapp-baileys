@@ -11,6 +11,10 @@ const path = require('path');
 const pino = require('pino');
 const rules = require('./rules');
 const ai = require('./ai');
+// Every AI call is saved with the business it was for, so the Usage page can report on it.
+ai.setUsageSink((rec) => { if (db.isReady()) db.recordUsage(rec).catch(() => {}); });
+const aiReply = (business, ...args) => ai.withUsage({ business }, () => ai.replyTurn(...args));
+const aiProfile = (business, ...args) => ai.withUsage({ business }, () => ai.buildProfile(...args));
 const db = require('./db');
 
 const DATA_DIR = path.resolve(process.env.SESSIONS_DIR || './.baileys_auth');
@@ -134,7 +138,7 @@ async function runAiReply(s, chatId) {
 
     let out = null;
     try {
-      out = await ai.replyTurn(r.ai, history, {
+      out = await aiReply(s.id, r.ai, history, {
         customerName: p.name,
         profile: hasContent(profile) ? profile : null,
         orders: await db.listOrders(s.id, { chatId, limit: 5 }),
@@ -189,7 +193,7 @@ async function firstProfile(s, r, chat, chatId, recentCount) {
   try {
     const full = toHistory(await chat.fetchMessages({ limit: PROFILE_FULL_READ }));
     if (full.length > recentCount) {
-      profile = (await ai.buildProfile(r.ai, full, null)) || {};
+      profile = (await aiProfile(s.id, r.ai, full, null)) || {};
       console.log(`[${s.id}] built profile for ${chatId} from ${full.length} chat turns`);
     }
   } catch (e) {
@@ -208,7 +212,7 @@ async function refreshProfile(s, r, chatId) {
     const chat = await s.client.getChatById(chatId);
     const transcript = toHistory(await chat.fetchMessages({ limit: PROFILE_REFRESH_READ }), s.transcripts);
     const current = (await db.getCustomer(s.id, chatId))?.profile;
-    const profile = await ai.buildProfile(r.ai, transcript, hasContent(current) ? current : null);
+    const profile = await aiProfile(s.id, r.ai, transcript, hasContent(current) ? current : null);
     if (profile) await db.saveProfile(s.id, chatId, profile);
   } catch (e) {
     console.error(`[${s.id}] profile refresh failed:`, e.message);
@@ -322,7 +326,7 @@ async function answerCustomer(s, r, esc, answer, { polish = true } = {}) {
       if (history.at(-1)?.role !== 'user') history.push({ role: 'user', text: '[The team has replied to my question. Please tell me their answer.]' });
       const customer = await db.getCustomer(s.id, esc.chat_id);
       try {
-        const out = await ai.replyTurn(r.ai, history, {
+        const out = await aiReply(s.id, r.ai, history, {
           customerName: customer?.name,
           profile: hasContent(customer?.profile) ? customer.profile : null,
           orders: await db.listOrders(s.id, { chatId: esc.chat_id, limit: 5 }),
@@ -424,7 +428,7 @@ async function transcribeVoiceNotes(s, r, msgs) {
       if (saved !== undefined) { s.transcripts.set(id, saved); continue; }
       const media = await m.downloadMedia();
       if (!media?.data) continue;
-      const text = await ai.transcribe(r.ai, media);
+      const text = await ai.withUsage({ business: s.id }, () => ai.transcribe(r.ai, media));
       s.transcripts.set(id, text || '');
       if (db.isReady()) await db.saveTranscript(s.id, id, m.from, text || '');
       console.log(`[${s.id}] transcribed a ${m.duration || '?'}s voice note`);
@@ -1269,20 +1273,22 @@ async function lightChats(s) {
 
 // One-to-one chats with a message in the last 2 weeks, for the "who gets
 // auto-replies" picker, newest first.
-async function listContacts(id, limit = 300) {
+// forSending: the "send a message" picker also wants groups and chats older than the recent window.
+async function listContacts(id, limit = 300, { forSending = false } = {}) {
   const s = sessions.get(id);
   if (!s) throw httpError(404, 'Session not found.');
   if (s.status !== 'ready') throw httpError(409, 'Connect this WhatsApp number first to load its contacts.');
-  const since = Date.now() / 1000 - CONTACTS_RECENT_DAYS * 86400;
-  const chats = (await lightChats(s)).filter((c) => !c.isGroup && c.timestamp >= since);
+  const since = forSending ? 0 : Date.now() / 1000 - CONTACTS_RECENT_DAYS * 86400;
+  const chats = (await lightChats(s)).filter((c) => (forSending || !c.isGroup) && (c.timestamp || 0) >= since);
   return chats
-    .filter((c) => isPersonalChat(c.id._serialized))
+    .filter((c) => (c.isGroup ? forSending : isPersonalChat(c.id._serialized)))
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     .slice(0, limit)
     .map((c) => ({
       id: c.id._serialized,
       name: c.name || c.id.user,
-      number: c.id.server === 'c.us' ? c.id.user : null,
+      number: c.isGroup ? null : c.id.server === 'c.us' ? c.id.user : null,
+      isGroup: Boolean(c.isGroup),
       lastMessageAt: c.timestamp ? c.timestamp * 1000 : null,
     }));
 }
@@ -1293,7 +1299,7 @@ async function testAiReply(id, input, message) {
   if (!sessions.has(id)) throw httpError(404, 'Session not found.');
   if (!String(message || '').trim()) throw httpError(400, 'Type a customer message to test with.');
   const r = rules.cleanRules(id, { ...input, enabled: false });
-  const out = await ai.replyTurn(r.ai, [{ role: 'user', text: String(message).trim() }], { customerName: 'Test Customer' });
+  const out = await ai.withUsage({ business: id, kind: 'test' }, () => ai.replyTurn(r.ai, [{ role: 'user', text: String(message).trim() }], { customerName: 'Test Customer' }));
   if (!out) return { reply: '(The AI declined to answer this message. The fallback reply would be sent instead.)' };
   return {
     reply: out.reply,
@@ -1399,7 +1405,7 @@ function view(s) {
     qr: s.qr, code: s.code, phone: s.phone, me: s.me, error: s.error, aiError: s.aiError,
     openQuestions: s.openQuestions || 0,
     web: webView(s),
-    autoReply: r.enabled ? `${r.mode === 'ai' ? `AI (${ai.PROVIDERS[r.ai.provider]?.label})` : 'Fixed replies'}${contactsLabel(r.contacts)}` : null,
+    autoReply: r.enabled ? `${r.mode === 'ai' ? `AI (${ai.serverAi().label})` : 'Fixed replies'}${contactsLabel(r.contacts)}` : null,
   };
 }
 

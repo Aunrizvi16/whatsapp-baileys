@@ -98,6 +98,7 @@ async function step(name, fn) {
 (async () => {
   await new Promise((r) => fakeAi.listen(0, '127.0.0.1', r));
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${fakeAi.address().port}/v1`;
+  process.env.AI_PROVIDER = 'openai'; process.env.AI_MODEL = 'gpt-test'; process.env.OPENAI_API_KEY = 'sk-test';
 
   const logger = require('../logger');
   logger.install();
