@@ -216,6 +216,7 @@ async function saveRules(id, input) {
   const clean = cleanRules(id, input);
   const previous = settings.get(id);
   settings.set(id, clean);
+  shortenPauses(id, previous?.pauseAfterHumanMinutes ?? DEFAULTS.pauseAfterHumanMinutes, clean.pauseAfterHumanMinutes);
   if (db.isReady()) {
     try {
       await db.saveSettings(id, clean);
@@ -267,7 +268,20 @@ function pauseChat(id, chatId, now = Date.now()) {
   }
 }
 
-const isPaused = (id, chatId, now = Date.now()) => (chat(id, chatId).paused_until || 0) > now;
+// With the pause set to 0 the bot never waits for the owner, even in chats that were paused before.
+const isPaused = (id, chatId, now = Date.now()) => getRules(id).pauseAfterHumanMinutes > 0 && (chat(id, chatId).paused_until || 0) > now;
+
+// The pause length was changed: chats already waiting get the new length, counted from when
+// the owner replied (the old end time minus the old length), instead of the old one.
+function shortenPauses(id, oldMinutes, newMinutes, now = Date.now()) {
+  if (oldMinutes === newMinutes) return;
+  for (const [chatId, c] of activity.get(id) || []) {
+    if (!(c.paused_until > now)) continue;
+    const started = c.paused_until - oldMinutes * 60000;
+    c.paused_until = newMinutes > 0 ? Math.max(0, started + newMinutes * 60000) : 0;
+    persistChat(id, chatId);
+  }
+}
 
 function matchKeyword(rules, text) {
   const t = text.toLowerCase();
