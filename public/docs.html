@@ -104,6 +104,16 @@
   .out { margin-top:10px; } .out .status { font:600 12.5px ui-monospace, monospace; margin-bottom:4px; } .out .status.ok { color:var(--ok); } .out .status.bad { color:var(--bad); }
   .out pre { margin:0; padding:12px 14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; font:12.5px/1.55 ui-monospace, monospace; overflow:auto; max-height:260px; }
 
+  .lt { margin:-6px 0 18px; }
+  .try-toggle { background:none; border:0; color:var(--tip); font-size:13.5px; font-weight:600; padding:4px 2px; } .try-toggle:hover { text-decoration:underline; }
+  .tp { background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:6px; display:flex; flex-direction:column; gap:10px; }
+  .tp .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .tp input, .tp textarea, .tp select { background:var(--panel); color:var(--text); border:1px solid var(--line-2); border-radius:8px; padding:7px 10px; font:13px ui-monospace, 'SF Mono', Menlo, monospace; min-width:0; }
+  .tp .tp-path { flex:1; } .tp textarea { width:100%; resize:vertical; line-height:1.55; }
+  .tp input:focus, .tp textarea:focus, .tp select:focus { outline:2px solid color-mix(in srgb, var(--tip) 55%, transparent); border-color:transparent; }
+  .tp label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); } .tp label small { color:var(--muted); }
+  .tp .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .tp .out { margin-top:0; }
   .flow { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; margin:16px 0; }
   .flow > div { flex:1; min-width:150px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:14px; color:var(--text-2); } .flow b { display:block; color:var(--text); margin-bottom:2px; }
   .flow .arrow { flex:0; min-width:0; background:none; border:0; padding:0; align-self:center; color:var(--muted); }
@@ -118,6 +128,7 @@
     <div class="brand"><i>W</i>WhatsApp API</div>
     <label class="field">Your server <input id="base" spellcheck="false" autocomplete="off" aria-label="Your server address"></label>
     <label class="field">Your key <input id="key" type="password" placeholder="wak_… (optional)" spellcheck="false" autocomplete="off" aria-label="Your API key"></label>
+    <label class="field" title="Used in every example and when you press Try it">Test number <input id="phone" placeholder="923001234567" inputmode="numeric" spellcheck="false" autocomplete="off" style="width:140px" aria-label="Phone number to test with"></label>
     <a class="back" href="/">← Dashboard</a>
   </div>
 </header>
@@ -135,7 +146,7 @@ const inl = (t) => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*
 
 const state = {
   lang: localStorage.getItem('docs.lang') || 'curl',
-  base: '', key: '',
+  base: '', key: '', phone: '', lastId: '', lastHook: '',
   type: 'text',
 };
 const LANGS = [['curl', 'curl'], ['node', 'Node.js'], ['python', 'Python']];
@@ -195,21 +206,49 @@ function hl(code) {
 const codeBox = (code, solo = true) => `<div class="code${solo ? ' solo' : ''}"><button class="cp" type="button">Copy</button><pre>${hl(code)}</pre></div>`;
 const json = (o) => codeBox(JSON.stringify(o, null, 2));
 
-// A request shown in every language, tabs on top. `id` makes the box re-render when the language, server or key changes.
+// A request shown in every language, tabs on top, with a "Try it" button underneath.
+// `.lc` (the code) is redrawn when the language, server, key or test number changes; `.lt` (the try panel) is left alone.
 let live = 0; const liveBoxes = new Map();
 function requestBox(req, custom) {
   const id = `rb${live++}`; liveBoxes.set(id, { req, custom });
-  return `<div data-live="${id}">${renderLive(id)}</div>`;
+  return `<div data-live="${id}"><div class="lc">${renderLive(id)}</div><div class="lt"><button type="button" class="try-toggle" data-try="${id}">▶ Try it</button><div class="tp-slot"></div></div></div>`;
 }
 function renderLive(id) {
   const { req, custom } = liveBoxes.get(id);
-  const code = custom ? custom[state.lang] || custom.curl : sample(state.lang, req);
+  const c = custom ? (typeof custom === 'function' ? custom() : custom) : null;
+  const code = c ? c[state.lang] || c.curl : sample(state.lang, fillReq(req));
   return `<div class="tabs">${LANGS.map(([k, n]) => `<button type="button" data-lang="${k}" class="${k === state.lang ? 'on' : ''}">${n}</button>`).join('')}</div>${codeBox(code, false)}`;
 }
-function refreshLive() { document.querySelectorAll('[data-live]').forEach((d) => { d.innerHTML = renderLive(d.dataset.live); }); const t = $('#typeBody'); if (t) t.innerHTML = typeBody(); }
+function refreshLive() { document.querySelectorAll('[data-live] > .lc').forEach((d) => { d.innerHTML = renderLive(d.parentElement.dataset.live); }); }
+
+// The examples use made-up values; swap in yours (test number, the last message and webhook you created).
+const NUM = '923001234567', SAMPLE_MSG = '3EB0C767D0A6F3A1B2', SAMPLE_HOOK = 'wh_1a2b';
+const fillStr = (v) => String(v).replaceAll(NUM, state.phone || NUM).replaceAll(SAMPLE_MSG, state.lastId || SAMPLE_MSG).replaceAll(SAMPLE_HOOK, state.lastHook || SAMPLE_HOOK);
+const fillDeep = (v) => (v === undefined ? v : JSON.parse(fillStr(JSON.stringify(v))));
+const fillReq = (r) => ({ ...r, path: fillStr(r.path), body: r.body === undefined ? undefined : fillDeep(r.body) });
+
+// Small real files so every message type can be tried without finding one: a 1x1 picture and sticker, a tiny PDF, half a second of tone.
+const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const TINY_WEBP = 'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
+const TINY_PDF = btoa('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
+function tinyWav() {
+  const rate = 8000, n = Math.floor(rate * 0.6), buf = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, t) => [...t].forEach((c, i) => buf.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); buf.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
+  buf.setUint32(24, rate, true); buf.setUint32(28, rate * 2, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true); str(36, 'data'); buf.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) buf.setInt16(44 + i * 2, Math.round(Math.sin(i / 9) * 6000), true);
+  let bin = ''; new Uint8Array(buf.buffer).forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+const SAMPLE_FILES = () => ({ image: [TINY_PNG, 'image/png'], sticker: [TINY_WEBP, 'image/webp'], document: [TINY_PDF, 'application/pdf'], audio: [tinyWav(), 'audio/wav'], voice: [tinyWav(), 'audio/wav'] });
+function tryBody(body) {
+  const b = fillDeep(body);
+  if (b?.media?.url && /example\.com/.test(b.media.url)) { const f = SAMPLE_FILES()[b.type]; if (f) b.media = { base64: f[0], mimetype: f[1] }; }
+  if (b?.media?.base64 === 'iVBORw0KGgo…') b.media.base64 = TINY_PNG;
+  return b;
+}
 
 /* ---------- content ---------- */
-const NUM = '923001234567';
 const TYPES = [
   { id: 'text', label: 'Text', blurb: 'A plain text message.', body: { to: NUM, type: 'text', text: 'Hi Sara, your order is ready for pickup.' },
     fields: [['to', 1, 'The customer\'s phone number with country code, digits only.'], ['text', 1, 'Up to 4096 characters.'], ['reply_to', 0, 'The id of an earlier message in this chat to quote.']] },
@@ -238,7 +277,7 @@ const typeBody = () => {
     <div class="tbl"><table><thead><tr><th>Field</th><th>Notes</th></tr></thead><tbody>
     ${t.fields.map(([n, r, d]) => `<tr><td><code>${n}</code>${r ? '<span class="req">required</span>' : '<span class="opt">optional</span>'}</td><td>${inl(d)}</td></tr>`).join('')}
     </tbody></table></div>${t.note ? `<p class="hint">${inl(t.note)}</p>` : ''}
-    ${(() => { const id = `rb${live++}`; liveBoxes.set(id, { req: { method: 'POST', path: '/messages', body: t.body } }); return `<div data-live="${id}">${renderLive(id)}</div>`; })()}
+    ${requestBox({ method: 'POST', path: '/messages', body: t.body })}
     <p class="hint">Works the same for every type: add <code>"reply_to": "&lt;message id&gt;"</code> to quote an earlier message.</p></div>`;
 };
 
@@ -265,8 +304,8 @@ const ENDPOINTS = [
   ['PATCH', '/business/auto-reply', 'manage', 'Turn auto-replies on or off', 'Handy while a person takes over a conversation.', { method: 'PATCH', path: '/business/auto-reply', body: { enabled: false } }, { id: 'shop', connected: true, auto_reply: { enabled: false } }],
   ['GET', '/webhooks', 'manage', 'List webhooks', 'Never shows the secret.', { method: 'GET', path: '/webhooks' }, { items: [{ id: 'wh_1a2b…', url: 'https://example.com/hook', events: ['*'], active: true }] }],
   ['POST', '/webhooks', 'manage', 'Add a webhook', 'The response has the signing `secret`. It is shown once.', { method: 'POST', path: '/webhooks', body: { url: 'https://example.com/whatsapp-events', events: ['message.received', 'message.status'] } }, { id: 'wh_1a2b…', url: 'https://example.com/whatsapp-events', secret: 'whsec_…' }],
-  ['DELETE', '/webhooks/:id', 'manage', 'Remove a webhook', 'Returns 204 with no body.', { method: 'DELETE', path: '/webhooks/wh_1a2b' }, null],
   ['POST', '/webhooks/:id/test', 'manage', 'Send a test event', 'Tells you whether your system answered.', { method: 'POST', path: '/webhooks/wh_1a2b/test' }, { delivered: true, status: 200, error: null }],
+  ['DELETE', '/webhooks/:id', 'manage', 'Remove a webhook', 'Returns 204 with no body.', { method: 'DELETE', path: '/webhooks/wh_1a2b' }, null],
 ];
 const ERRORS = [
   [400, 'invalid_request', 'Something in your request is wrong.', 'Read the message: it names the field.'],
@@ -329,16 +368,17 @@ def events():
     event = json.loads(raw)
     print(event["type"], event["data"])
     return "", 200`;
-  const upload = {
-    curl: `curl ${baseUrl()}/messages \\\n  -H "Authorization: Bearer ${keyText()}" \\\n  -F to=${NUM} \\\n  -F type=document \\\n  -F filename=report.pdf \\\n  -F caption="Monthly report" \\\n  -F file=@./report.pdf`,
-    node: `import { openAsBlob } from "node:fs";\n\nconst form = new FormData();\nform.set("to", "${NUM}");\nform.set("type", "document");\nform.set("filename", "report.pdf");\nform.set("caption", "Monthly report");\nform.set("file", await openAsBlob("./report.pdf"), "report.pdf");\n\nconst res = await fetch(${jsStr(baseUrl() + '/messages')}, {\n  method: "POST",\n  headers: { "Authorization": "Bearer ${keyText()}" },\n  body: form,\n});\nconsole.log(res.status, await res.json());`,
-    python: `import requests\n\nwith open("report.pdf", "rb") as f:\n    r = requests.post(\n        ${jsStr(baseUrl() + '/messages')},\n        headers={"Authorization": "Bearer ${keyText()}"},\n        data={"to": "${NUM}", "type": "document", "filename": "report.pdf", "caption": "Monthly report"},\n        files={"file": f},\n    )\nprint(r.status_code, r.json())`,
-  };
+  const upload = () => ({
+    curl: `curl ${baseUrl()}/messages \\\n  -H "Authorization: Bearer ${keyText()}" \\\n  -F to=${state.phone || NUM} \\\n  -F type=document \\\n  -F filename=report.pdf \\\n  -F caption="Monthly report" \\\n  -F file=@./report.pdf`,
+    node: `import { openAsBlob } from "node:fs";\n\nconst form = new FormData();\nform.set("to", "${state.phone || NUM}");\nform.set("type", "document");\nform.set("filename", "report.pdf");\nform.set("caption", "Monthly report");\nform.set("file", await openAsBlob("./report.pdf"), "report.pdf");\n\nconst res = await fetch(${jsStr(baseUrl() + '/messages')}, {\n  method: "POST",\n  headers: { "Authorization": "Bearer ${keyText()}" },\n  body: form,\n});\nconsole.log(res.status, await res.json());`,
+    python: `import requests\n\nwith open("report.pdf", "rb") as f:\n    r = requests.post(\n        ${jsStr(baseUrl() + '/messages')},\n        headers={"Authorization": "Bearer ${keyText()}"},\n        data={"to": "${state.phone || NUM}", "type": "document", "filename": "report.pdf", "caption": "Monthly report"},\n        files={"file": f},\n    )\nprint(r.status_code, r.json())`,
+  });
   const b64 = { to: NUM, type: 'image', media: { base64: 'iVBORw0KGgo…', mimetype: 'image/png' } };
 
   const pages = [];
   pages.push(`<h1>Connect your system to WhatsApp</h1>
     <p class="lead">Send messages, read orders and customers, and get told the moment a customer writes. A few lines of code, any language.</p>
+    ${callout('tip', '<p><strong>Every example has a Try it button.</strong> Paste your key and a test number at the top, then press Try it on any example to run it for real and see the answer.</p>')}
     <div class="cards">
       <div class="card"><h4>Send</h4><p>Text, photos, videos, voice notes, files, locations and more.</p></div>
       <div class="card"><h4>Listen</h4><p>Webhooks tell your system about new messages and orders instantly.</p></div>
@@ -351,12 +391,9 @@ def events():
       ${callout('warn', '<p>Treat the key like a password. Keep it on your server, never in a web page or mobile app.</p>')}
       <p>Paste it into <strong>Your key</strong> at the top of this page to fill it into every example. It stays in this page only and is never saved.</p></div></div>
     <div class="step"><b>2</b><div><h3>Send your first message</h3>
-      <p>Pick your language and run it. Use your own number to test.</p>
+      <p>Pick your language, or press <strong>Try it</strong> to send it for real. Put your own number in <strong>Test number</strong> at the top first.</p>
       ${requestBox({ method: 'POST', path: '/messages', body: { to: NUM, type: 'text', text: 'Hello from my system!' } })}
-      <div class="try"><h4>Or try it right here</h4><p>This sends a real message from your business number.</p>
-        <div class="row"><input id="tryTo" placeholder="Phone, e.g. ${NUM}" inputmode="numeric"><input id="tryText" value="Hello from my system!" maxlength="200"></div>
-        <div class="row" style="margin-top:8px"><button class="btn" id="trySend" type="button">Send test message</button><button class="btn alt" id="tryKey" type="button">Just check my key</button></div>
-        <div class="out" id="tryOut"></div></div></div></div>
+</div></div>
     <div class="step"><b>3</b><div><h3>Get notified when customers reply</h3>
       <p>Add a webhook: a URL on your system. Whenever a customer messages you, we send it the details. See <a href="#webhooks">Webhooks</a>.</p></div></div></div>`));
 
@@ -377,7 +414,7 @@ def events():
     <h3>Base64 <span class="scope">small files</span></h3><p>Put the file inside the JSON. Fine for small files.</p>
     ${requestBox({ method: 'POST', path: '/messages', body: b64 })}
     <h3>Upload <span class="scope">large files</span></h3><p>Send the file itself as a form upload. Other fields are plain form fields.</p>
-    ${requestBox(null, upload)}
+    ${requestBox({ method: 'POST', path: '/messages', upload: true }, upload)}
     ${callout('tip', '<p><strong>We check the file itself,</strong> not its name. A text file called <code>photo.png</code> is refused. Size limits are WhatsApp\'s: image 5 MB, video 16 MB, audio and voice 16 MB, document 50 MB, sticker 1 MB.</p>')}`));
 
   pages.push(sec('safe', 'Never send the same message twice', 'Networks fail. If a request times out, you can\'t know if the message went out.', `
@@ -432,6 +469,7 @@ state.base = $('#base').value;
 
 $('#base').oninput = (e) => { state.base = e.target.value.trim(); refreshLive(); };
 $('#key').oninput = (e) => { state.key = e.target.value.trim(); refreshLive(); };
+$('#phone').oninput = (e) => { state.phone = e.target.value.replace(/\D/g, ''); refreshLive(); };
 
 document.addEventListener('click', async (e) => {
   const lang = e.target.closest('[data-lang]');
@@ -440,6 +478,16 @@ document.addEventListener('click', async (e) => {
   if (chip) { state.type = chip.dataset.type; document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === chip)); $('#typeBody').innerHTML = typeBody(); return; }
   const v = e.target.closest('[data-vtab]');
   if (v) { document.querySelectorAll('[data-vtab]').forEach((b) => b.classList.toggle('on', b === v)); $('#vcode pre').innerHTML = hl(built.verify[v.dataset.vtab]); return; }
+  const tg = e.target.closest('.try-toggle');
+  if (tg) {
+    const slot = tg.parentElement.querySelector('.tp-slot');
+    if (slot.firstChild) { slot.replaceChildren(); tg.textContent = '▶ Try it'; return; }
+    slot.innerHTML = tryPanel(tg.dataset.try); tg.textContent = '▼ Hide'; return;
+  }
+  const send = e.target.closest('.tp-send');
+  if (send) { sendTry(send.closest('.tp')); return; }
+  const reset = e.target.closest('.tp-reset');
+  if (reset) { const tp = reset.closest('.tp'); const slot = tp.parentElement; slot.innerHTML = tryPanel(tp.dataset.for); return; }
   const cp = e.target.closest('.cp');
   if (cp) {
     try { await navigator.clipboard.writeText(cp.parentElement.querySelector('pre').textContent); cp.textContent = 'Copied'; cp.classList.add('done'); } catch { cp.textContent = 'Copy failed'; }
@@ -447,25 +495,78 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-/* try it: calls this server with the key typed at the top; the key is never stored */
-async function run(label, path, init) {
-  const out = $('#tryOut');
-  if (!state.key) { out.innerHTML = `<div class="status bad">Paste your key into "Your key" at the top first.</div>`; $('#key').focus(); return; }
-  out.innerHTML = '<div class="status">Sending…</div>';
+/* ---------- Try it: runs the request against this server with the key typed at the top (never stored) ---------- */
+const UPLOAD_TYPES = ['document', 'image', 'video', 'voice', 'audio', 'sticker'];
+function tryPanel(id) {
+  const { req } = liveBoxes.get(id);
+  if (req.upload) {
+    return `<div class="tp" data-for="${id}" data-upload="1"><div class="row"><span class="badge POST">POST</span><code>/messages</code> <span class="hint" style="margin:0">as a file upload</span></div>
+      <div class="grid2"><label>To<input class="u-to" value="${esc(state.phone || NUM)}" inputmode="numeric"></label>
+      <label>Type<select class="u-type">${UPLOAD_TYPES.map((t) => `<option>${t}</option>`).join('')}</select></label>
+      <label>File name <small>(documents)</small><input class="u-name" placeholder="report.pdf"></label>
+      <label>Caption <small>(optional)</small><input class="u-caption"></label></div>
+      <label>File<input class="u-file" type="file"></label>
+      <div class="row"><button class="btn tp-send" type="button">Send request</button></div><div class="out"></div></div>`;
+  }
+  const f = fillReq(req);
+  const body = f.body === undefined ? '' : JSON.stringify(tryBody(req.body), null, 2);
+  const video = req.body?.type === 'video' && /example\.com/.test(req.body?.media?.url || '');
+  return `<div class="tp" data-for="${id}" data-method="${f.method}"><div class="row"><span class="badge ${f.method}">${f.method}</span><input class="tp-path" value="${esc(f.path)}" spellcheck="false" aria-label="Path"></div>
+    ${body ? `<textarea class="tp-body" spellcheck="false" rows="${Math.min(16, body.split('\n').length + 1)}" aria-label="Request body">${esc(body)}</textarea>` : ''}
+    ${video ? '<p class="hint">Replace the video link with the address of a real video, then send.</p>' : ''}
+    ${req.body?.media?.url && !video && !/example\.com/.test(req.body.media.url) ? '' : ''}
+    <div class="row"><button class="btn tp-send" type="button">Send request</button><button class="btn alt tp-reset" type="button">Reset</button><span class="hint" style="margin:0">Runs for real on ${esc(baseUrl())}</span></div><div class="out"></div></div>`;
+}
+
+async function showResult(out, res, ms) {
+  const type = res.headers.get('content-type') || '';
+  let shown = '', extra = '';
+  if (/^image\//.test(type)) { const blob = await res.blob(); extra = `<img alt="" src="${URL.createObjectURL(blob)}" style="max-width:220px;border-radius:8px;border:1px solid var(--line)">`; shown = `${type}, ${blob.size} bytes`; }
+  else if (/^(audio|video|application\/(?!json))/.test(type)) { const blob = await res.blob(); shown = `A file came back (${type}, ${blob.size} bytes).`; }
+  else { const text = await res.text(); shown = text || '(empty answer)'; try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch {} }
+  out.innerHTML = `<div class="status ${res.ok ? 'ok' : 'bad'}">${res.status} ${res.ok ? 'OK' : 'failed'} · ${ms} ms</div>${extra}<pre>${esc(shown)}</pre>`;
+  return shown;
+}
+
+async function sendTry(panel) {
+  const out = panel.querySelector('.out'), id = panel.dataset.for, { req } = liveBoxes.get(id);
+  if (!state.key) { out.innerHTML = '<div class="status bad">Paste your key into "Your key" at the top first.</div>'; $('#key').focus(); return; }
+  const headers = { Authorization: `Bearer ${state.key}` };
+  let path = '/messages', method = 'POST', body;
+  if (panel.dataset.upload) {
+    const file = panel.querySelector('.u-file').files[0];
+    if (!file) { out.innerHTML = '<div class="status bad">Choose a file first.</div>'; return; }
+    body = new FormData();
+    body.set('to', panel.querySelector('.u-to').value.trim()); body.set('type', panel.querySelector('.u-type').value);
+    const name = panel.querySelector('.u-name').value.trim(), cap = panel.querySelector('.u-caption').value.trim();
+    if (name) body.set('filename', name); if (cap) body.set('caption', cap);
+    body.set('file', file, file.name);
+  } else {
+    method = panel.dataset.method; path = panel.querySelector('.tp-path').value.trim();
+    if (!path.startsWith('/')) path = `/${path}`;
+    const ta = panel.querySelector('.tp-body');
+    if (ta) { try { JSON.parse(ta.value); } catch (e) { out.innerHTML = `<div class="status bad">The body is not valid JSON: ${esc(e.message)}</div>`; return; } body = ta.value; headers['Content-Type'] = 'application/json'; }
+    if (req.idem) headers['Idempotency-Key'] = req.idem;
+  }
+  if (method === 'DELETE' && !confirm('This really removes it. Continue?')) return;
+  const btn = panel.querySelector('.tp-send'); btn.disabled = true; out.innerHTML = '<div class="status">Sending…</div>';
+  const t0 = performance.now();
   try {
-    const res = await fetch(baseUrl() + path, { ...init, headers: { Authorization: `Bearer ${state.key}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) } });
-    const text = await res.text(); let shown = text; try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch {}
-    out.innerHTML = `<div class="status ${res.ok ? 'ok' : 'bad'}">${label}: ${res.status} ${res.ok ? 'OK' : 'failed'}</div><pre>${esc(shown)}</pre>`;
+    const res = await fetch(baseUrl() + path, { method, headers, body });
+    const clone = res.clone();
+    const shown = await showResult(out, res, Math.round(performance.now() - t0));
+    // Remember what you just created, so the examples below use your real ids.
+    if (res.ok) {
+      let j = null; try { j = await clone.json(); } catch {}
+      if (j?.id && method === 'POST' && path.startsWith('/messages')) { state.lastId = j.id; refreshLive(); }
+      if (j?.id && method === 'POST' && path === '/webhooks') { state.lastHook = j.id; refreshLive(); }
+    }
+    void shown;
   } catch (err) {
     out.innerHTML = `<div class="status bad">Could not reach ${esc(baseUrl())}</div><pre>${esc(err.message)}\n\nThis page can only call the server it was opened from.</pre>`;
   }
+  btn.disabled = false;
 }
-$('#tryKey').onclick = () => run('Key check', '/business', { method: 'GET' });
-$('#trySend').onclick = () => {
-  const to = $('#tryTo').value.trim(), text = $('#tryText').value.trim();
-  if (!to || !text) { $('#tryOut').innerHTML = '<div class="status bad">Enter a phone number and a message.</div>'; return; }
-  run('Send', '/messages', { method: 'POST', body: JSON.stringify({ to, type: 'text', text }) });
-};
 
 /* highlight where you are */
 const links = [...document.querySelectorAll('#nav a')], heads = links.map((a) => document.getElementById(a.getAttribute('href').slice(1)));
