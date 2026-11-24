@@ -16,6 +16,9 @@ ai.setUsageSink((rec) => { if (db.isReady()) db.recordUsage(rec).catch(() => {})
 const aiReply = (business, ...args) => ai.withUsage({ business }, () => ai.replyTurn(...args));
 const aiProfile = (business, ...args) => ai.withUsage({ business }, () => ai.buildProfile(...args));
 const db = require('./db');
+const webhooks = require('./webhooks');
+const media = require('./media');
+const apikeys = require('./apikeys');
 
 const DATA_DIR = path.resolve(process.env.SESSIONS_DIR || './.baileys_auth');
 const MAX_SESSIONS = Number(process.env.MAX_SESSIONS || 5);
@@ -229,6 +232,7 @@ async function afterReply(s, r, chatId, customerName, out) {
   if (out.order_confirmed && out.order?.items?.length) {
     const order = await db.addOrder(s.id, chatId, out.order);
     console.log(`[${s.id}] order #${order.id} recorded for ${chatId}`);
+    webhooks.emit(s.id, 'order.created', orderEvent(order));
     if (r.ai.managerNumber) {
       const lines = order.items.map((i) => `- ${i.quantity} x ${i.name}${i.price ? ` (${i.price})` : ''}`).join('\n');
       const text = `New order #${order.id} from ${name}${phone ? ` (+${phone})` : ''}\n${lines}\nTotal: ${order.total ?? '?'}\nAddress: ${order.address || '-'}${order.notes ? `\nNotes: ${order.notes}` : ''}`;
@@ -239,6 +243,7 @@ async function afterReply(s, r, chatId, customerName, out) {
   if (out.escalate_to_manager && out.manager_question?.trim()) {
     const id = await db.addEscalation(s.id, chatId, name, out.manager_question.trim());
     console.log(`[${s.id}] question #${id} for the manager from ${chatId}`);
+    webhooks.emit(s.id, 'question.created', { id, chat_id: chatId, phone, customer_name: name, question: out.manager_question.trim() });
     if (r.ai.managerNumber) {
       const text = `Question #${id} from ${name}${phone ? ` (+${phone})` : ''}:\n${out.manager_question.trim()}\n\nReply to this message with the answer and I'll pass it on to the customer.`;
       try {
@@ -479,6 +484,7 @@ function markBotSending(s, chatId, body) {
 
 function onOwnMessage(s, msg) {
   if (!msg.fromMe || !isPersonalChat(msg.to)) return;
+  if (s.apiSent.has(msg.id._serialized)) return; // sent by another system through the API
   const key = `${msg.to}|${msg.body}`;
   const n = s.botSending.get(key) || 0;
   if (n > 0) {
@@ -788,6 +794,11 @@ function attachEvents(s, sock) {
     for (const rec of recs) {
       const msg = toMessage(s, rec);
       const fresh = now - rec.ts < REPLY_MAX_AGE_S;
+      if (fresh && isPersonalChat(rec.chat_id) && (rec.from_me || type === 'notify')) {
+        if (!(rec.from_me && s.apiSent.has(rec.msg_id))) { // API sends announce themselves
+          webhooks.emit(id, rec.from_me ? 'message.sent' : 'message.received', eventMessage({ ...rec, business: id }), { key: rec.msg_id });
+        }
+      }
       if (rec.from_me) {
         // Sent from the phone (or by the bot): same handling as WhatsApp Web's message_create.
         if (fresh) { try { onOwnMessage(s, msg); } catch {} }
@@ -802,7 +813,11 @@ function attachEvents(s, sock) {
     for (const u of updates || []) {
       if (u.key?.fromMe && u.update?.status !== undefined && u.update.status !== null) {
         const ack = STATUS_TO_ACK[u.update.status];
-        if (ack !== undefined && ack > (s.acks.get(u.key.id) ?? -2)) s.acks.set(u.key.id, ack);
+        if (ack !== undefined && ack > (s.acks.get(u.key.id) ?? -2)) {
+          s.acks.set(u.key.id, ack);
+          const chat = toAppId(u.key.remoteJid || '');
+          if (isPersonalChat(chat)) webhooks.emit(id, 'message.status', { id: u.key.id, chat_id: chat, phone: db.phoneOf(chat), status: ACK_API[ack] || String(ack) }, { key: `${u.key.id}|${ack}` });
+        }
       }
     }
     if (s.acks.size > 2000) s.acks.delete(s.acks.keys().next().value);
@@ -913,6 +928,7 @@ async function onConnection(s, sock, u) {
     setStatus(s, 'ready', { error: null, deadline: null, progress: null, qr: null, code: null, newLogin: false, me: { number: me, name: sock.user?.name || sock.user?.notify || '' } });
     console.log(`[${id}] ready as ${me}`);
     watchConnection(s);
+    webhooks.emit(id, 'session.connected', { phone: me, name: sock.user?.name || sock.user?.notify || '' });
     return;
   }
   if (u.connection !== 'close') return;
@@ -922,6 +938,7 @@ async function onConnection(s, sock, u) {
   clearInterval(s.health);
   if (s.removed) return;
   const wasReady = s.status === 'ready';
+  if (wasReady) webhooks.emit(id, 'session.disconnected', { phone: s.me?.number || null, reason });
 
   if (code === B.DisconnectReason.loggedOut) {
     // Unlinked from the phone: drop the dead login and show a fresh QR on the same card.
@@ -1028,7 +1045,7 @@ function startSession(id, { phone, attempt = 1, newLogin = false } = {}) {
   const s = {
     id, status: 'starting', since: Date.now(), deadline: null, attempt, progress: null, newLogin,
     qr: null, code: null, phone, me: null, error: null, aiError: null,
-    botSending: new Map(), aiChats: new Map(), busy: new Set(), transcripts: new Map(), images: new Map(),
+    botSending: new Map(), apiSent: new Set(), sendChain: Promise.resolve(), aiChats: new Map(), busy: new Set(), transcripts: new Map(), images: new Map(),
     recent: new Map(), names: new Map(), lidToPn: new Map(), acks: new Map(),
   };
   s.client = makeClient(s);
@@ -1198,6 +1215,219 @@ async function restoreSessions() {
     const until = Date.now() + 30000;
     while (Date.now() < until && ['starting', 'authenticated', 'retrying'].includes(sessions.get(id)?.status)) await sleep(500);
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// For other systems (the public API and webhooks)
+// ---------------------------------------------------------------------------
+
+const API_TYPE = { chat: 'text', ptt: 'voice', vcard: 'contact' }; // WhatsApp Web names -> API names
+const ACK_API = { '-1': 'failed', 0: 'queued', 1: 'sent', 2: 'delivered', 3: 'read', 4: 'played' };
+const SEND_GAP_MS = Number(process.env.API_SEND_GAP_MS ?? 400); // pause between API sends, so WhatsApp doesn't see a burst
+
+const orderEvent = (o) => { const { business, ...rest } = o; return rest; };
+
+// A stored message in the shape webhooks and the API show it.
+function eventMessage(rec) {
+  const type = API_TYPE[rec.type] || rec.type;
+  const out = {
+    id: rec.msg_id, chat_id: rec.chat_id, phone: db.phoneOf(rec.chat_id), name: rec.from_me ? null : rec.push_name || null,
+    direction: rec.from_me ? 'outbound' : 'inbound', type,
+    text: rec.type === 'chat' ? rec.body : rec.caption || rec.body || '',
+    timestamp: rec.ts, reply_to: rec.quoted_id || null,
+  };
+  if (rec.duration) out.duration = rec.duration;
+  if (MEDIA_TYPES.has(rec.type)) out.media = { mimetype: rec.mimetype || null, url: apikeys.mediaLink(rec.business || '', rec.msg_id) };
+  return out;
+}
+
+async function setOrderStatus(id, orderId, status) {
+  const order = await db.setOrderStatus(id, orderId, status);
+  webhooks.emit(id, 'order.updated', orderEvent(order));
+  return order;
+}
+
+function readySession(id) {
+  const s = sessions.get(id);
+  if (!s) throw httpError(404, 'Business not found.');
+  if (s.status !== 'ready') throw httpError(409, `This business is not connected to WhatsApp (status: ${s.status}).`);
+  return s;
+}
+
+// Phone number (digits, or <digits>@c.us) -> chat id, after checking it is on WhatsApp.
+async function resolveRecipient(s, to) {
+  const raw = String(to ?? '').trim();
+  const idMatch = /^(\d{6,15})@(c\.us|s\.whatsapp\.net)$/.exec(raw);
+  const digits = idMatch ? idMatch[1] : raw.replace(/[\s+()-]/g, '');
+  if (!/^\d{6,15}$/.test(digits)) throw httpError(400, '"to" must be a phone number with the country code, for example 923001234567.');
+  const numberId = await s.client.getNumberId(digits);
+  if (!numberId) throw httpError(404, `${digits} is not on WhatsApp.`);
+  return { chatId: numberId._serialized, number: digits };
+}
+
+async function findRecord(s, msgId) {
+  for (const list of s.recent.values()) { const r = list.find((x) => x.msg_id === msgId); if (r) return { ...r, business: s.id }; }
+  const r = db.isReady() ? await db.getWaMessage(s.id, msgId) : null;
+  return r ? { ...r, business: s.id } : null;
+}
+
+const vcardOf = (c) => {
+  const name = String(c?.name || '').replace(/[\r\n;,]/g, ' ').trim();
+  const phone = String(c?.phone || '').replace(/\D/g, '');
+  if (!name || !/^\d{6,15}$/.test(phone)) throw httpError(400, 'Each contact needs a "name" and a "phone" (digits with the country code).');
+  return { name, vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nTEL;type=CELL;waid=${phone}:+${phone}\nEND:VCARD` };
+};
+
+const TYPES = ['text', 'image', 'video', 'audio', 'voice', 'document', 'sticker', 'location', 'contact', 'reaction'];
+const needText = (v, field, max) => {
+  if (typeof v !== 'string' || !v.trim()) throw httpError(400, `"${field}" is required.`);
+  if (v.length > max) throw httpError(400, `"${field}" can be at most ${max} characters.`);
+  return v;
+};
+const optText = (v, field, max) => {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v !== 'string' || v.length > max) throw httpError(400, `"${field}" must be text of at most ${max} characters.`);
+  return v;
+};
+
+// The Baileys content for one API message.
+async function buildContent(s, chatId, input) {
+  const type = input.type || 'text';
+  if (!TYPES.includes(type)) throw httpError(400, `"type" must be one of: ${TYPES.join(', ')}.`);
+  switch (type) {
+    case 'text': return { type, content: { text: needText(input.text, 'text', 4096) }, label: input.text };
+    case 'image': case 'video': {
+      const f = await media.load(type, input.media, input.upload);
+      const caption = optText(input.caption, 'caption', 1024);
+      return { type, content: { [type]: f.data, mimetype: f.mimetype, ...(caption ? { caption } : {}), ...(type === 'video' && input.gif ? { gifPlayback: true } : {}) }, label: caption || '' };
+    }
+    case 'audio': {
+      const f = await media.load('audio', input.media, input.upload);
+      return { type, content: { audio: f.data, mimetype: f.mimetype, ptt: false }, label: '' };
+    }
+    case 'voice': {
+      const f = await media.voice(await media.load('voice', input.media, input.upload));
+      return { type, content: { audio: f.data, mimetype: f.mimetype, ptt: true }, label: '' };
+    }
+    case 'document': {
+      const f = await media.load('document', input.media, input.upload);
+      const caption = optText(input.caption, 'caption', 1024);
+      const fileName = String(input.filename || f.filename || 'file').replace(/[\\/\r\n]/g, '_').slice(0, 120);
+      return { type, content: { document: f.data, mimetype: f.mimetype, fileName, ...(caption ? { caption } : {}) }, label: caption || '' };
+    }
+    case 'sticker': {
+      const f = await media.load('sticker', input.media, input.upload);
+      return { type, content: { sticker: f.data, mimetype: f.mimetype }, label: '' };
+    }
+    case 'location': {
+      const lat = Number(input.latitude), lon = Number(input.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw httpError(400, '"latitude" and "longitude" are required numbers.');
+      const name = optText(input.name, 'name', 120), address = optText(input.address, 'address', 250);
+      return { type, content: { location: { degreesLatitude: lat, degreesLongitude: lon, ...(name ? { name } : {}), ...(address ? { address } : {}) } }, label: '' };
+    }
+    case 'contact': {
+      if (!Array.isArray(input.contacts) || !input.contacts.length || input.contacts.length > 10) throw httpError(400, '"contacts" must be a list of 1 to 10 people.');
+      const cards = input.contacts.map(vcardOf);
+      return { type, content: { contacts: { displayName: cards.length === 1 ? cards[0].name : `${cards.length} contacts`, contacts: cards.map((c) => ({ vcard: c.vcard })) } }, label: '' };
+    }
+    case 'reaction': {
+      const target = await findRecord(s, String(input.message_id || ''));
+      if (!target || target.chat_id !== chatId) throw httpError(404, 'That message_id was not found in this chat.');
+      const emoji = typeof input.emoji === 'string' ? input.emoji : '';
+      if (emoji.length > 8) throw httpError(400, '"emoji" must be a single emoji (or empty to remove the reaction).');
+      return { type, content: { react: { text: emoji, key: { remoteJid: toWaJid(chatId), id: target.msg_id, fromMe: target.from_me } } }, label: '' };
+    }
+  }
+}
+
+// Send one message for another system. input: { to, type, text | media | ..., reply_to }.
+async function sendApi(id, input) {
+  const s = readySession(id);
+  const { chatId, number } = await resolveRecipient(s, input.to);
+  const built = await buildContent(s, chatId, input); // slow work (downloads, conversion) before taking a place in the queue
+  let quoted;
+  if (input.reply_to) {
+    const q = await findRecord(s, String(input.reply_to));
+    if (!q || q.chat_id !== chatId) throw httpError(404, 'reply_to: that message was not found in this chat.');
+    quoted = { key: { remoteJid: toWaJid(chatId), id: q.msg_id, fromMe: q.from_me }, message: { conversation: q.body || q.caption || '' } };
+  }
+  return enqueueSend(s, async () => {
+    if (s.status !== 'ready') throw httpError(409, `This business is not connected to WhatsApp (status: ${s.status}).`);
+    markBotSending(s, chatId, built.label || '');
+    let sent;
+    try {
+      sent = await s.sock.sendMessage(toWaJid(chatId), built.content, quoted ? { quoted } : {});
+    } catch (e) {
+      throw httpError(502, `WhatsApp could not send the message: ${e.message}`);
+    }
+    const msgId = sent?.key?.id;
+    if (!msgId) throw httpError(502, 'WhatsApp did not accept the message.');
+    s.apiSent.add(msgId);
+    if (s.apiSent.size > 1000) s.apiSent.delete(s.apiSent.values().next().value);
+    s.acks.set(msgId, STATUS_TO_ACK[sent.status] ?? 0);
+    const rec = await toRecord(s, sent).catch(() => null);
+    if (rec) { rec.chat_id = chatId; await remember(s, [rec]); }
+    webhooks.emit(id, 'message.sent', { ...(rec ? eventMessage({ ...rec, business: id }) : { id: msgId, chat_id: chatId, phone: number, direction: 'outbound', type: built.type }), source: 'api' }, { key: msgId });
+    for (let i = 0; i < 6 && (s.acks.get(msgId) ?? 0) < 1; i++) await sleep(500); // give WhatsApp a moment to confirm
+    const ack = s.acks.get(msgId) ?? 0;
+    if (ack < 0) throw httpError(502, 'WhatsApp could not send the message.');
+    const result = { id: msgId, to: number, type: built.type, status: ACK_API[ack] || 'sent', timestamp: Number(sent.messageTimestamp) || Math.floor(Date.now() / 1000) };
+    return result;
+  });
+}
+
+function enqueueSend(s, fn) {
+  const run = s.sendChain.then(async () => { try { return await fn(); } finally { if (SEND_GAP_MS) await sleep(SEND_GAP_MS); } });
+  s.sendChain = run.catch(() => {});
+  return run;
+}
+
+async function messageInfo(id, msgId) {
+  const s = sessions.get(id);
+  if (!s) throw httpError(404, 'Business not found.');
+  const rec = await findRecord(s, String(msgId));
+  if (!rec) throw httpError(404, 'Message not found.');
+  const out = eventMessage(rec);
+  if (rec.from_me) out.status = ACK_API[s.acks.get(rec.msg_id) ?? 1] || 'sent'; // older than the server's memory: it was sent
+  return out;
+}
+
+// Received or sent media, for download.
+async function messageMedia(id, msgId) {
+  const s = sessions.get(id);
+  if (!s) throw httpError(404, 'Business not found.');
+  const rec = await findRecord(s, String(msgId));
+  if (!rec || !MEDIA_TYPES.has(rec.type)) throw httpError(404, 'This message has no file.');
+  const file = await downloadMedia(s, rec).catch((e) => { throw httpError(410, `The file is no longer available: ${e.message}`); });
+  return { mimetype: file.mimetype, data: Buffer.from(file.data, 'base64') };
+}
+
+async function listMessages(id, { contact, limit = 50 } = {}) {
+  const s = sessions.get(id);
+  if (!s) throw httpError(404, 'Business not found.');
+  const digits = String(contact || '').replace(/\D/g, '');
+  if (!digits) throw httpError(400, '"contact" (a phone number) is required.');
+  const recs = await db.recentWaMessages(id, `${digits}@c.us`, Math.min(200, Math.max(1, limit)));
+  return recs.map((r) => { const m = eventMessage({ ...r, business: id }); if (r.from_me) m.status = ACK_API[s.acks.get(r.msg_id) ?? 1] || 'sent'; return m; });
+}
+
+// People this business has chatted with, newest first.
+async function listApiContacts(id, { q = '', limit = 50, offset = 0 } = {}) {
+  if (!sessions.has(id)) throw httpError(404, 'Business not found.');
+  const needle = String(q).trim().toLowerCase();
+  const all = (await db.listWaChats(id, { limit: 5000 })).filter((c) => !c.is_group && isPersonalChat(c.chat_id));
+  const hit = needle ? all.filter((c) => (c.name || '').toLowerCase().includes(needle) || (db.phoneOf(c.chat_id) || '').includes(needle.replace(/\D/g, '') || '\0')) : all;
+  return {
+    total: hit.length,
+    items: hit.slice(offset, offset + limit).map((c) => ({ id: c.chat_id, number: db.phoneOf(c.chat_id), name: c.name || null, last_message_at: c.t ? new Date(c.t * 1000).toISOString() : null })),
+  };
+}
+
+function businessInfo(id) {
+  const s = sessions.get(id);
+  if (!s) throw httpError(404, 'Business not found.');
+  return { id: s.id, status: s.status, connected: s.status === 'ready', phone: s.me?.number || null, name: s.me?.name || null, auto_reply: { enabled: Boolean(rules.getRules(s.id).enabled) } };
 }
 
 // ---------------------------------------------------------------------------
@@ -1436,6 +1666,7 @@ function httpError(status, message) {
 module.exports = {
   hardRestart, restartAll,
   startSession, restartSession, logoutSession, deleteBusiness, screenshot, restoreSessions, sendMessage, testAiReply, listContacts, answerQuestion,
+  sendApi, messageInfo, messageMedia, listMessages, listApiContacts, businessInfo, setOrderStatus, MESSAGE_TYPES: TYPES,
   listSessions, getSession, shutdown, view, toHistory,
   _test: {
     sessions, runAiReply, handleManagerMessage, typingTimeMs, webView, toRecord, toMessage, readContent, baileys,

@@ -297,6 +297,14 @@
   #promptField.fs { position:fixed; inset:0; z-index:2000; background:var(--surface); padding:16px 24px 24px; gap:10px; font-size:15px; }
   #promptField.fs .promptbar { max-width:980px; width:100%; margin:0 auto; }
   #promptField.fs textarea { flex:1; min-height:0 !important; max-width:980px; width:100%; margin:0 auto; font-size:15px; line-height:1.65; resize:none; padding:16px 18px; }
+  /* ---- Toasts (drawn in the top layer, so they also show over dialogs) ---- */
+  #toasts { position:fixed; inset:auto 16px 16px auto; margin:0; padding:0; border:none; background:transparent; overflow:visible; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:center; gap:10px; max-width:min(420px, calc(100vw - 32px)); padding:10px 14px; border-radius:10px; background:var(--panel-2); border:1px solid var(--line-2); box-shadow:var(--shadow); color:var(--text); font-size:13.5px; line-height:1.4; cursor:pointer; animation:toastin .18s ease-out; }
+  .toast::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; box-shadow:0 0 0 3px var(--ok-bg); }
+  .toast.err::before { background:var(--bad); box-shadow:0 0 0 3px var(--bad-bg); }
+  .toast.out { opacity:0; transform:translateY(6px); transition:opacity .2s, transform .2s; }
+  @keyframes toastin { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .dirtytag { color:var(--warn); font-size:12.5px; white-space:nowrap; }
   /* ---- Access tab ---- */
   .accbox { display:flex; flex-direction:column; gap:10px; max-width:520px; }
   .accsec { margin-bottom:0; } .accform { display:flex; flex-direction:column; gap:10px; }
@@ -304,6 +312,18 @@
   .creds { border:1px solid color-mix(in srgb, var(--ok) 40%, transparent); background:var(--ok-bg); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
   .creds pre { margin:0; padding:10px 12px; background:var(--panel-2); border-radius:8px; font:12.5px/1.6 ui-monospace, 'SF Mono', Menlo, monospace; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--text); }
   .creds small { color:var(--muted); }
+  .apibox { display:flex; flex-direction:column; gap:10px; max-width:720px; }
+  .apirow { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line); } .apirow:first-of-type { border-top:0; }
+  .apirow .ci { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; line-height:1.35; }
+  .apirow .ci b { font-weight:600; overflow-wrap:anywhere; } .apirow .ci small { color:var(--muted); overflow-wrap:anywhere; }
+  .apirow .acts { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
+  .apirow code, .apibox pre { font:12.5px/1.5 ui-monospace, 'SF Mono', Menlo, monospace; }
+  .apibox pre { margin:0; padding:10px 12px; background:var(--panel-2); border-radius:8px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--text); }
+  .apichecks { display:flex; flex-wrap:wrap; gap:6px 14px; }
+  #rulesView .apichecks label { flex-direction:row; align-items:center; gap:6px; font-size:13px; font-weight:400; color:var(--text-2); }
+  #rulesView .apichecks input { width:auto; }
+  button.alt.danger { color:var(--bad); }
+  .apiempty { color:var(--muted); padding:4px 0; }
   /* ---- Usage ---- */
   .usagepanel .toolbar2 { padding-top:0; }
   .kpis { margin-bottom:12px; gap:8px; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr)); } .kpis .rv-card { padding:10px 14px; }
@@ -502,6 +522,7 @@
           <button type="button" data-t="features"><svg viewBox="0 0 16 16"><path d="M8 2l1.4 3.6L13 7l-3.6 1.4L8 12 6.6 8.4 3 7l3.6-1.4z"/></svg>Features</button>
           <button type="button" data-t="audience"><svg viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.2"/><path d="M2 13c.5-2 2-3 4-3s3.5 1 4 3M11 4.5a2 2 0 0 1 0 3.8M12.5 10c.9.5 1.4 1.4 1.5 3"/></svg>Audience</button>
           <button type="button" data-t="usage"><svg viewBox="0 0 16 16"><path d="M3 13V8M8 13V3M13 13V6"/></svg>Usage</button>
+          <button type="button" data-t="api"><svg viewBox="0 0 16 16"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3L7 13"/></svg>API</button>
           <button type="button" data-t="access" id="tabAccess" hidden><svg viewBox="0 0 16 16"><circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.4 8.6L13 3M11 5l1.5 1.5"/></svg>Access</button>
         </div>
         <span class="grow"></span>
@@ -518,6 +539,7 @@
           <div id="rvConn" hidden></div>
           <div id="rvUsage" hidden></div>
           <div id="rvAccess" hidden></div>
+          <div id="rvApi" hidden></div>
           <form id="rulesForm" data-tab="replies">
 
     <input type="checkbox" id="rEnabled" hidden>
@@ -600,8 +622,9 @@
 
           <div class="dfoot">
       <div class="msg err" id="rMsg"></div>
-      <button type="button" class="alt" id="rCancel">Cancel</button>
-      <button id="rSave">Save changes</button>
+      <span class="dirtytag" id="rDirty"></span>
+      <button type="button" class="alt" id="rCancel">Discard</button>
+      <button id="rSave" disabled>Save changes</button>
     </div>
           </form>
         </div>
@@ -614,6 +637,8 @@
     </section>
   </main>
 </div>
+
+<div id="toasts" popover="manual" aria-live="polite"></div>
 
 <dialog id="addDlg" class="narrow">
   <form id="addForm">
@@ -700,6 +725,7 @@ $('#pwForm').onsubmit = async (e) => {
   try {
     await api('/auth/password', { method: 'POST', body: JSON.stringify({ current: $('#pwCur').value, next: $('#pwNew').value }) });
     $('#pwDlg').close();
+    toast('Password changed');
   } catch (err) { out.textContent = err.message; }
 };
 
@@ -721,14 +747,14 @@ function setView(v) {
   if (DATA_VIEWS.includes(v)) openDataPage(v);
   if (v === 'usage') openUsage();
 }
-document.querySelectorAll('.nav[data-view]').forEach((n) => n.onclick = () => setView(n.dataset.view));
+document.querySelectorAll('.nav[data-view]').forEach((n) => n.onclick = () => { if (confirmLeave()) { setDirty(false); setView(n.dataset.view); } });
 
 // The business page (auto-replies editor) replaces the list until you go back.
 function showRules() {
   $('#app').hidden = true; $('#usersView').hidden = true; $('#dataView').hidden = true; $('#usageView').hidden = true; $('#rulesView').hidden = false;
   view = 'rules'; window.scrollTo(0, 0);
 }
-function closeRules() { setPromptFs(false); setView('biz'); lastJson = ''; refresh(); }
+function closeRules(force) { if (!force && !confirmLeave()) return; setPromptFs(false); setDirty(false); setView('biz'); lastJson = ''; refresh(); }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && view === 'rules' && !document.querySelector('dialog[open]')) closeRules();
 });
@@ -759,9 +785,10 @@ function renderUsers() {
   const q = $('#usearch').value.trim().toLowerCase();
   const shown = usersList.filter((u) => (ufilter === 'all' || u.status === ufilter) && (!q || u.name.toLowerCase().includes(q) || u.email.includes(q)));
 
+  const DONE = { Approve: 'Account approved', Reject: 'Sign-up rejected', Disable: 'Account disabled', Enable: 'Account enabled', 'Make admin': 'Now an admin', 'Make user': 'Now a regular user', 'Reset password': 'Password reset', Delete: 'Account deleted' };
   const act = (label, cls, fn) => el('button', { type: 'button', className: cls, textContent: label, onclick: async (ev) => {
     ev.target.disabled = true;
-    try { await fn(); } catch (err) { alert(err.message); }
+    try { if ((await fn()) !== false) toast(DONE[label] || 'Done'); } catch (err) { toastErr(err.message); }
     loadUsers();
   } });
   const patch = (u, data) => () => api(`/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify(data) });
@@ -772,7 +799,8 @@ function renderUsers() {
     const buttons = [];
     if (manageable) {
       if (u.status === 'pending') buttons.push(act('Approve', '', patch(u, { status: 'active' })), act('Reject', 'ghost', async () => {
-        if (confirm(`Reject ${u.email}?`)) await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+        if (!confirm(`Reject ${u.email}?`)) return false;
+        await api(`/admin/users/${u.id}`, { method: 'DELETE' });
       }));
       else if (u.status === 'active') buttons.push(act('Disable', 'ghost', patch(u, { status: 'disabled' })));
       else buttons.push(act('Enable', '', patch(u, { status: 'active' })));
@@ -780,9 +808,11 @@ function renderUsers() {
       if (u.status !== 'pending') {
         buttons.push(act('Reset password', 'alt', async () => {
           const pw = prompt(`New password for ${u.email} (10+ characters)`);
-          if (pw) await api(`/admin/users/${u.id}/password`, { method: 'POST', body: JSON.stringify({ password: pw }) });
+          if (!pw) return false;
+          await api(`/admin/users/${u.id}/password`, { method: 'POST', body: JSON.stringify({ password: pw }) });
         }), act('Delete', 'ghost', async () => {
-          if (confirm(`Delete ${u.email}?`)) await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+          if (!confirm(`Delete ${u.email}?`)) return false;
+          await api(`/admin/users/${u.id}`, { method: 'DELETE' });
         }));
       }
     }
@@ -812,13 +842,14 @@ $('#restartAll').onclick = async () => {
   const btn = $('#restartAll'); btn.disabled = true; $('#allMsg').textContent = 'Reloading everything...';
   try {
     const r = await api('/restart-all', { method: 'POST' });
-    $('#allMsg').textContent = `Reloading ${r.count} business${r.count === 1 ? '' : 'es'}, one at a time. Watch the cards.`;
-  } catch (err) { $('#allMsg').textContent = err.message; }
+    $('#allMsg').textContent = '';
+    toast(`Reloading ${r.count} business${r.count === 1 ? '' : 'es'}, one at a time`);
+  } catch (err) { $('#allMsg').textContent = ''; toastErr(err.message); }
   setTimeout(() => { btn.disabled = false; }, 10000);
   lastJson = ''; refresh();
 };
 
-function openAdd() { setView('biz'); $('#addMsg').textContent = ''; $('#addDlg').showModal(); $('#newId').focus(); }
+function openAdd() { if (!confirmLeave()) return; setDirty(false); setView('biz'); $('#addMsg').textContent = ''; $('#addDlg').showModal(); $('#newId').focus(); }
 $('#newBtn').onclick = openAdd;
 $('#sideNew').onclick = openAdd;
 $('#addCancel').onclick = () => $('#addDlg').close();
@@ -840,10 +871,25 @@ $('#addForm').onsubmit = async (e) => {
   e.preventDefault();
   $('#addMsg').textContent = '';
   try {
-    await api('/sessions', { method: 'POST', body: JSON.stringify({ id: $('#newId').value.trim(), phone: $('#newPhone').value.trim() || undefined }) });
+    const name = $('#newId').value.trim();
+    await api('/sessions', { method: 'POST', body: JSON.stringify({ id: name, phone: $('#newPhone').value.trim() || undefined }) });
     $('#newId').value = ''; $('#newPhone').value = ''; $('#addDlg').close(); lastJson = ''; refresh();
+    toast(`Business "${name}" created`);
   } catch (err) { if (err.message !== 'unauthorized') $('#addMsg').textContent = err.message; }
 };
+
+// Short messages in the corner: type 'ok' (default) or 'err'. Click to dismiss.
+function toast(text, type = 'ok') {
+  const host = $('#toasts');
+  try { if (!host.matches(':popover-open')) host.showPopover(); } catch { /* old browser: still visible */ }
+  const t = el('div', { className: `toast ${type === 'err' ? 'err' : ''}`, textContent: text, role: type === 'err' ? 'alert' : 'status' });
+  const close = () => { t.classList.add('out'); setTimeout(() => t.remove(), 200); };
+  t.onclick = close;
+  host.append(t);
+  while (host.children.length > 4) host.firstChild.remove();
+  setTimeout(close, type === 'err' ? 6500 : 3200);
+}
+const toastErr = (m) => { if (m && m !== 'unauthorized') toast(m, 'err'); };
 
 function el(tag, props = {}, ...kids) {
   const n = Object.assign(document.createElement(tag), props);
@@ -887,7 +933,7 @@ async function restart(id, phone, btn) {
   try {
     await api(`/sessions/${encodeURIComponent(id)}/restart`, { method: 'POST', body: JSON.stringify(phone === undefined ? {} : { phone }) });
     delete pairDrafts[id]; refresh();
-  } catch (err) { alert(err.message); if (btn) btn.disabled = false; }
+  } catch (err) { toastErr(err.message); if (btn) btn.disabled = false; }
 }
 
 // ---- Dropdown component ----
@@ -1124,10 +1170,10 @@ async function shareQr(s, btn) {
   try {
     const file = await qrFile(s);
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: `Link WhatsApp: ${s.id}`, text: QR_TEXT(s.id) }); btn.textContent = 'Shared'; }
-      catch (e) { if (e.name !== 'AbortError') { downloadFile(file); btn.textContent = 'Saved image'; } }
-    } else { downloadFile(file); btn.textContent = 'Saved image'; }
-  } catch (err) { alert(`Could not share the QR code: ${err.message}`); }
+      try { await navigator.share({ files: [file], title: `Link WhatsApp: ${s.id}`, text: QR_TEXT(s.id) }); btn.textContent = 'Shared'; toast('QR code shared'); }
+      catch (e) { if (e.name !== 'AbortError') { downloadFile(file); btn.textContent = 'Saved image'; toast('QR code saved as an image'); } }
+    } else { downloadFile(file); btn.textContent = 'Saved image'; toast('QR code saved as an image'); }
+  } catch (err) { toastErr(`Could not share the QR code: ${err.message}`); }
   setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1800);
 }
 async function copyQr(s, btn) {
@@ -1135,7 +1181,7 @@ async function copyQr(s, btn) {
   try {
     const file = await qrFile(s);
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': file })]);
-    btn.textContent = 'Copied';
+    btn.textContent = 'Copied'; toast('QR image copied');
   } catch { btn.textContent = 'Copy not supported'; }
   setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1800);
 }
@@ -1224,7 +1270,7 @@ function connection(s) {
     reload.onclick = async () => {
       reload.disabled = true; reload.textContent = 'Restarting...';
       try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); }
-      catch (err) { alert(err.message); reload.disabled = false; reload.textContent = label; }
+      catch (err) { toastErr(err.message); reload.disabled = false; reload.textContent = label; }
     };
     c.append(el('div', { className: 'row' }, reload));
   }
@@ -1240,7 +1286,7 @@ function connection(s) {
       e.preventDefault(); btn.disabled = true; out.className = 'msg'; out.textContent = 'Sending...';
       try {
         const r = await api(`/sessions/${encodeURIComponent(s.id)}/send`, { method: 'POST', body: JSON.stringify({ to: d.to, message: d.message }) });
-        out.className = r.delivered === false ? 'msg err' : 'msg ok'; out.textContent = r.delivered === false ? `Handed to WhatsApp, but ${r.sentTo} hasn't got it yet (${r.status}). Check the phone.` : `Sent to ${r.sentTo}${r.status ? ` (${r.status})` : ''}`; d.message = ''; message.value = '';
+        out.className = r.delivered === false ? 'msg err' : 'msg ok'; out.textContent = r.delivered === false ? `Handed to WhatsApp, but ${r.sentTo} hasn't got it yet (${r.status}). Check the phone.` : `Sent to ${r.sentTo}${r.status ? ` (${r.status})` : ''}`; d.message = ''; message.value = ''; if (r.delivered !== false) toast(`Message sent to ${r.sentTo}`);
       } catch (err) { out.className = 'msg err'; out.textContent = err.message; }
       btn.disabled = false;
     };
@@ -1254,8 +1300,8 @@ function connection(s) {
     hard.onclick = async () => {
       if (!confirm(`Reconnect "${s.id}"?`)) return;
       hard.disabled = true;
-      try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); }
-      catch (err) { alert(err.message); hard.disabled = false; }
+      try { await api(`/sessions/${encodeURIComponent(s.id)}/hard-restart`, { method: 'POST' }); lastJson = ''; refresh(); toast(`Reconnecting "${s.id}"`); }
+      catch (err) { toastErr(err.message); hard.disabled = false; }
     };
     const details = w ? [w.chats != null ? `${w.chats} chats loaded` : null, w.ms != null ? `answered in ${w.ms < 1000 ? `${w.ms} ms` : `${(w.ms / 1000).toFixed(1)} s`}` : null].filter(Boolean).join(' · ') : '';
     const webRow = el('div', { className: `web ${w ? w.level : ''}` },
@@ -1273,8 +1319,8 @@ function connection(s) {
     logout.onclick = async () => {
       if (!confirm(`Log out "${s.id}"?`)) return;
       logout.disabled = true;
-      try { await api(`/sessions/${encodeURIComponent(s.id)}/logout`, { method: 'POST' }); lastJson = ''; refresh(); }
-      catch (err) { alert(err.message); logout.disabled = false; }
+      try { await api(`/sessions/${encodeURIComponent(s.id)}/logout`, { method: 'POST' }); lastJson = ''; refresh(); toast(`Logged out "${s.id}"`); }
+      catch (err) { toastErr(err.message); logout.disabled = false; }
     };
     c.append(el('div', { className: 'row' }, logout));
   }
@@ -1282,8 +1328,8 @@ function connection(s) {
   wipe.onclick = async () => {
     if (!confirm(`Delete "${s.id}" and all its data? This can't be undone.`)) return;
     wipe.disabled = true;
-    try { await api(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); delete drafts[s.id]; if (view === 'rules') closeRules(); else refresh(); }
-    catch (err) { alert(err.message); wipe.disabled = false; }
+    try { await api(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); delete drafts[s.id]; if (view === 'rules') closeRules(true); else refresh(); toast(`Deleted "${s.id}"`); }
+    catch (err) { toastErr(err.message); wipe.disabled = false; }
   };
   c.append(wipe);
   return c;
@@ -1295,8 +1341,8 @@ function autoRow(s) {
   const sw = el('input', { type: 'checkbox', className: 'sw', checked: Boolean(s.autoReply), title: s.autoReply ? 'Turn auto-replies off' : 'Turn auto-replies on' });
   sw.onchange = async () => {
     sw.disabled = true;
-    try { await setAutoReplies(s.id, sw.checked); lastJson = ''; refresh(); }
-    catch (err) { sw.checked = !sw.checked; alert(err.message); }
+    try { await setAutoReplies(s.id, sw.checked); lastJson = ''; refresh(); toast(`Auto-replies ${sw.checked ? 'on' : 'off'} for ${s.id}`); }
+    catch (err) { sw.checked = !sw.checked; toastErr(err.message); }
     sw.disabled = false;
   };
   return el('div', { className: 'kv' }, el('span', { className: 'k', textContent: 'Auto-replies' }),
@@ -1419,7 +1465,7 @@ function kwRow(k = { keywords: '', reply: '' }) {
   const reply = el('textarea', { placeholder: 'Our prices start at...', value: k.reply, maxLength: 2000, className: 'kwReply' });
   const rm = el('button', { type: 'button', className: 'link', textContent: 'Remove' });
   const row = el('div', { className: 'kw' }, el('div', { className: 'top' }, el('strong', { textContent: 'Keywords' }), rm), words, reply);
-  rm.onclick = () => row.remove();
+  rm.onclick = () => { row.remove(); setDirty(true); };
   return row;
 }
 
@@ -1434,14 +1480,8 @@ function showMode() {
 
 // Model suggestions and key hint depend on the provider.
 
-async function openRules(id, tab) {
-  rulesFor = id;
-  $('#rMsg').textContent = '';
-  $('#rTestOut').replaceChildren();
-  $('#rulesTitle').textContent = id;
-  setPromptFs(false);
-  try { loaded = await api(`/sessions/${encodeURIComponent(id)}/rules`); } catch (err) { return alert(err.message); }
-  const r = loaded;
+// Puts a rules object into the form. Used when opening a business and again after saving.
+function fillRules(r) {
   $('#rEnabled').checked = r.enabled;
   // A business that never set anything up starts on AI replies; otherwise show what they saved.
   const usedFixed = r.mode === 'rules' && (r.enabled || r.welcome || r.fallback || r.keywords.length);
@@ -1469,12 +1509,23 @@ async function openRules(id, tab) {
   $('#whoSearch').value = '';
   showWho();
   showMode();
+  setDirty(false);
+}
+
+async function openRules(id, tab) {
+  rulesFor = id;
+  $('#rMsg').textContent = '';
+  $('#rTestOut').replaceChildren();
+  $('#rulesTitle').textContent = id;
+  setPromptFs(false);
+  try { loaded = await api(`/sessions/${encodeURIComponent(id)}/rules`); } catch (err) { return toastErr(err.message); }
+  fillRules(loaded);
   showRules();
   setRulesTab(tab || OPEN_TAB(lastList.find((b) => b.id === id) || {}));
 }
 
 let rvTab = 'replies';
-const PANES = { connection: '#rvConn', usage: '#rvUsage', access: '#rvAccess' };
+const PANES = { connection: '#rvConn', usage: '#rvUsage', access: '#rvAccess', api: '#rvApi' };
 function setRulesTab(t) {
   if (t === 'access' && !isAdminUser()) t = 'replies';
   rvTab = t;
@@ -1485,6 +1536,7 @@ function setRulesTab(t) {
   if (!own) $('#rulesForm').dataset.tab = t;
   if (t === 'usage') showBusinessUsage();
   if (t === 'access') showBusinessAccess();
+  if (t === 'api') showBusinessApi();
   fillRulesHeader();
   window.scrollTo(0, 0);
 }
@@ -1535,7 +1587,8 @@ $('#rvToggle').onchange = async () => {
     const r = await setAutoReplies(rulesFor, want);
     loaded.enabled = r.enabled; $('#rEnabled').checked = r.enabled; // the form's Save keeps this value
     lastJson = ''; refresh(); fillRulesHeader();
-  } catch (err) { box.checked = !want; msg.textContent = err.message; }
+    toast(`Auto-replies ${r.enabled ? 'on' : 'off'}`);
+  } catch (err) { box.checked = !want; msg.textContent = ''; toastErr(err.message); }
   box.disabled = false;
 };
 
@@ -1629,11 +1682,11 @@ document.addEventListener('keydown', (e) => {
 }, true);
 $('#rExample').onclick = () => {
   if ($('#rPrompt').value.trim() && !confirm('Replace your text with the example?')) return;
-  $('#rPrompt').value = EXAMPLE_PROMPT; updatePromptCount();
+  $('#rPrompt').value = EXAMPLE_PROMPT; updatePromptCount(); setDirty(true);
 };
-$('#rAddKw').onclick = () => $('#rKeywords').append(kwRow());
-$('#rCancel').onclick = closeRules;
-$('#rClose').onclick = closeRules;
+$('#rAddKw').onclick = () => { $('#rKeywords').append(kwRow()); setDirty(true); };
+$('#rCancel').onclick = () => { if (rvDirty) { if (confirm('Discard your unsaved changes?')) openRules(rulesFor, rvTab); } else closeRules(); };
+$('#rClose').onclick = () => closeRules();
 document.querySelectorAll('#rulesView .dtabs button').forEach((b) => b.onclick = () => setRulesTab(b.dataset.t));
 
 $('#rTestBtn').onclick = async () => {
@@ -1659,11 +1712,31 @@ $('#rulesForm').onsubmit = async (e) => {
   $('#rMsg').textContent = '';
   $('#rSave').disabled = true;
   try {
-    await api(`/sessions/${encodeURIComponent(rulesFor)}/rules`, { method: 'PUT', body: JSON.stringify(formValues()) });
-    closeRules();
-  } catch (err) { $('#rMsg').textContent = err.message; }
-  $('#rSave').disabled = false;
+    const saved = await api(`/sessions/${encodeURIComponent(rulesFor)}/rules`, { method: 'PUT', body: JSON.stringify(formValues()) });
+    loaded = saved;
+    fillRules(saved);          // show what the server kept, and stay on this page
+    $('#rvToggle').checked = Boolean(saved.enabled);
+    fillRulesHeader();
+    lastJson = ''; refresh();
+    toast('Settings saved');
+  } catch (err) {
+    $('#rMsg').textContent = err.message;
+    $('#rSave').disabled = false;
+    toast(err.message, 'err');
+  }
 };
+
+// Unsaved changes: the Save button lights up, leaving asks first.
+let rvDirty = false;
+function setDirty(on) {
+  rvDirty = on;
+  $('#rSave').disabled = !on;
+  $('#rDirty').textContent = on ? 'Unsaved changes' : '';
+}
+const NOT_SETTINGS = ['whoSearch', 'rTestMsg', 'rEnabled'];
+for (const ev of ['input', 'change']) $('#rulesForm').addEventListener(ev, (e) => { if (!NOT_SETTINGS.includes(e.target.id)) { setDirty(true); $('#rMsg').textContent = ''; } });
+function confirmLeave() { return !(view === 'rules' && rvDirty) || confirm('Discard your unsaved changes?'); }
+addEventListener('beforeunload', (e) => { if (view === 'rules' && rvDirty) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------------------------------------------------------------------------
 // Data pages: Orders, Customers, Questions, Logs. One table each, across all your businesses.
@@ -1706,8 +1779,8 @@ const PAGES = {
       const statusDd = enhanceSelect(select, { inline: true, small: true });
       select.onchange = async () => {
         select.disabled = true;
-        try { await api(`/sessions/${encodeURIComponent(o._biz)}/orders/${o.id}`, { method: 'PATCH', body: JSON.stringify({ status: select.value }) }); o.status = select.value; }
-        catch (err) { alert(err.message); select.value = o.status; }
+        try { await api(`/sessions/${encodeURIComponent(o._biz)}/orders/${o.id}`, { method: 'PATCH', body: JSON.stringify({ status: select.value }) }); o.status = select.value; toast(`Order #${o.id} marked ${STATUS_LABEL[select.value].toLowerCase()}`); }
+        catch (err) { toastErr(err.message); select.value = o.status; }
         select.disabled = false;
       };
       const items = (o.items || []).map((i) => `${i.quantity} × ${i.name}`).join(', ') || '-';
@@ -1878,6 +1951,7 @@ function answerBox(q) {
       });
       out.className = 'msg ok';
       out.textContent = `Sent to ${q.customer_name || 'the customer'}:\n${r.sent}`;
+      toast(`Reply sent to ${q.customer_name || 'the customer'}`);
       setTimeout(() => { if (dvKind === 'questions') loadData(true); }, 2500);
       lastJson = ''; refresh(); // update the "waiting" counts
     } catch (err) {
@@ -2060,7 +2134,7 @@ function openUsage() {
 $('#uRefresh').onclick = () => uPage?.load();
 $('#uExport').onclick = async () => {
   const btn = $('#uExport'); btn.disabled = true;
-  try { await uPage.exportCsv(); } catch (err) { alert(err.message); }
+  try { await uPage.exportCsv(); toast('Report downloaded'); } catch (err) { toastErr(err.message); }
   btn.disabled = false;
 };
 
@@ -2074,7 +2148,7 @@ function makePassword() {
 }
 async function copyText(text, btn) {
   const label = btn.textContent;
-  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch { btn.textContent = 'Copy failed'; }
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; toast('Copied to clipboard'); } catch { btn.textContent = 'Copy failed'; toastErr('Could not copy'); }
   setTimeout(() => { btn.textContent = label; }, 1600);
 }
 
@@ -2109,6 +2183,7 @@ async function showBusinessAccess(created) {
     try {
       await api(`/sessions/${encodeURIComponent(id)}/access`, { method: 'POST', body: JSON.stringify({ name: name.value, email: email.value, password: pass.value }) });
       lastJson = ''; refresh();
+      toast('Login created');
       showBusinessAccess({ email: email.value.trim().toLowerCase(), password: pass.value });
     } catch (err) { msg.textContent = err.message; go.disabled = false; }
   };
@@ -2135,8 +2210,8 @@ async function showBusinessAccess(created) {
     const who = pick.options[pick.selectedIndex].textContent;
     if (!confirm(`Give "${id}" to ${who}?`)) return;
     move.disabled = true; moveMsg.textContent = '';
-    try { await api(`/sessions/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify({ userId: pick.value }) }); lastJson = ''; refresh(); showBusinessAccess(); }
-    catch (err) { moveMsg.textContent = err.message; move.disabled = false; }
+    try { await api(`/sessions/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify({ userId: pick.value }) }); lastJson = ''; refresh(); toast(`"${id}" moved to ${who}`); showBusinessAccess(); }
+    catch (err) { moveMsg.textContent = ''; toastErr(err.message); move.disabled = false; }
   };
 
   box.replaceChildren(el('div', { className: 'accbox' },
@@ -2144,6 +2219,115 @@ async function showBusinessAccess(created) {
     ...(credsBox ? [credsBox] : []),
     sec('Create a login for the owner', form),
     ...(pick.options.length ? [sec('Or give it to an existing user', el('div', { className: 'row' }, pickDd, move), moveMsg)] : [])));
+}
+
+
+// The business page's API tab: keys and webhooks for other systems.
+const EVENT_TEXT = {
+  'message.received': 'Message received', 'message.sent': 'Message sent', 'message.status': 'Delivered / read',
+  'order.created': 'Order created', 'order.updated': 'Order updated', 'question.created': 'Question for the manager',
+  'session.connected': 'WhatsApp connected', 'session.disconnected': 'WhatsApp disconnected',
+};
+const usedAgo = (ms) => {
+  if (!ms) return 'never used';
+  const m = Math.round((Date.now() - ms) / 60000);
+  return m < 1 ? 'used just now' : m < 60 ? `used ${m} min ago` : m < 1440 ? `used ${Math.round(m / 60)} h ago` : `used ${Math.round(m / 1440)} days ago`;
+};
+async function showBusinessApi(created) {
+  const box = $('#rvApi'), id = rulesFor, base = `/sessions/${encodeURIComponent(id)}`;
+  let keys, hooks;
+  try { [keys, hooks] = await Promise.all([api(`${base}/api-keys`), api(`${base}/webhooks`)]); }
+  catch (err) { box.replaceChildren(el('div', { className: 'msg err', textContent: err.message })); return; }
+  if (rulesFor !== id) return;
+  const sec = (title, ...kids) => el('div', { className: 'upanel accsec' }, el('div', { className: 'uhead' }, el('h3', { textContent: title })), ...kids);
+  const again = (made) => showBusinessApi(made);
+  const secretBox = (title, text, note) => {
+    const copy = el('button', { type: 'button', textContent: 'Copy' }); copy.onclick = () => copyText(text, copy);
+    return el('div', { className: 'creds' }, el('b', { textContent: title }), el('pre', { textContent: text }), el('div', { className: 'row' }, copy), el('small', { textContent: note }));
+  };
+
+  // ---- keys ----
+  const keyRows = keys.keys.length ? keys.keys.map((k) => {
+    const rm = el('button', { type: 'button', className: 'alt danger', textContent: 'Remove' });
+    rm.onclick = async () => {
+      if (!confirm(`Remove the key "${k.name}"? Systems using it stop working immediately.`)) return;
+      try { await api(`${base}/api-keys/${encodeURIComponent(k.id)}`, { method: 'DELETE' }); toast('Key removed'); again(); } catch (err) { toastErr(err.message); }
+    };
+    return el('div', { className: 'apirow' },
+      el('div', { className: 'ci' }, el('b', { textContent: k.name }), el('small', {}, el('code', { textContent: `${k.prefix}…` }), ` · ${k.scopes.join(', ')} · ${usedAgo(k.last_used_at)}`)),
+      el('div', { className: 'acts' }, rm));
+  }) : [el('div', { className: 'apiempty', textContent: 'No keys yet.' })];
+  const kName = el('input', { placeholder: 'What will use it? e.g. CRM', maxLength: 60, autocomplete: 'off' });
+  const kScopes = ['read', 'send', 'manage'].map((sc) => el('label', {}, el('input', { type: 'checkbox', value: sc, checked: sc !== 'manage' }), ` ${sc}`));
+  const kMsg = el('div', { className: 'msg err' });
+  const kGo = el('button', { textContent: 'Create key' });
+  const kForm = el('form', { className: 'accform' },
+    el('label', {}, 'Name', kName),
+    el('div', {}, el('div', { className: 'apiempty', textContent: 'read: see messages, contacts, orders  ·  send: send messages  ·  manage: change orders, auto-replies, webhooks' }), el('div', { className: 'apichecks' }, ...kScopes)),
+    kMsg, el('div', { className: 'row' }, kGo));
+  kForm.onsubmit = async (e) => {
+    e.preventDefault(); kGo.disabled = true; kMsg.textContent = '';
+    try {
+      const r = await api(`${base}/api-keys`, { method: 'POST', body: JSON.stringify({ name: kName.value, scopes: kScopes.map((l) => l.firstChild).filter((c) => c.checked).map((c) => c.value) }) });
+      toast('Key created'); again({ key: r.key, name: r.name });
+    } catch (err) { kMsg.textContent = err.message; kGo.disabled = false; }
+  };
+
+  // ---- webhooks ----
+  const hookRows = hooks.webhooks.length ? hooks.webhooks.map((h) => {
+    const test = el('button', { type: 'button', className: 'alt', textContent: 'Test' });
+    test.onclick = async () => {
+      test.disabled = true; test.textContent = 'Sending…';
+      try { const r = await api(`${base}/webhooks/${encodeURIComponent(h.id)}/test`, { method: 'POST' }); r.delivered ? toast(`Test delivered (${r.status})`) : toastErr(`Test failed: ${r.error || r.status}`); }
+      catch (err) { toastErr(err.message); }
+      test.disabled = false; test.textContent = 'Test';
+    };
+    const toggle = el('button', { type: 'button', className: 'alt', textContent: h.active ? 'Turn off' : 'Turn on' });
+    toggle.onclick = async () => { try { await api(`${base}/webhooks/${encodeURIComponent(h.id)}`, { method: 'PATCH', body: JSON.stringify({ active: !h.active }) }); again(); } catch (err) { toastErr(err.message); } };
+    const rm = el('button', { type: 'button', className: 'alt danger', textContent: 'Remove' });
+    rm.onclick = async () => {
+      if (!confirm(`Remove the webhook ${h.url}?`)) return;
+      try { await api(`${base}/webhooks/${encodeURIComponent(h.id)}`, { method: 'DELETE' }); toast('Webhook removed'); again(); } catch (err) { toastErr(err.message); }
+    };
+    const evs = h.events.includes('*') ? 'All events' : h.events.map((e) => EVENT_TEXT[e] || e).join(', ');
+    return el('div', { className: 'apirow' },
+      el('div', { className: 'ci' },
+        el('b', { textContent: h.url }),
+        el('small', {}, el('span', { className: `chip ${h.active ? 'good' : 'bad'}`, textContent: h.active ? 'On' : 'Off: too many failures' }), ` ${evs}${h.failures ? ` · ${h.failures} failed in a row` : ''}`)),
+      el('div', { className: 'acts' }, test, toggle, rm));
+  }) : [el('div', { className: 'apiempty', textContent: 'No webhooks yet.' })];
+  const wUrl = el('input', { type: 'url', placeholder: 'https://your-system.com/whatsapp-events', autocomplete: 'off', maxLength: 500 });
+  const wAll = el('input', { type: 'checkbox', checked: true });
+  const wEvents = hooks.events.map((ev) => el('label', {}, el('input', { type: 'checkbox', value: ev }), ` ${EVENT_TEXT[ev] || ev}`));
+  const wList = el('div', { className: 'apichecks', hidden: true }, ...wEvents);
+  wAll.onchange = () => { wList.hidden = wAll.checked; };
+  const wMsg = el('div', { className: 'msg err' });
+  const wGo = el('button', { textContent: 'Add webhook' });
+  const wForm = el('form', { className: 'accform' },
+    el('label', {}, 'URL', wUrl),
+    el('div', {}, el('div', { className: 'apichecks' }, el('label', {}, wAll, ' All events')), wList),
+    wMsg, el('div', { className: 'row' }, wGo));
+  wForm.onsubmit = async (e) => {
+    e.preventDefault(); wGo.disabled = true; wMsg.textContent = '';
+    try {
+      const events = wAll.checked ? ['*'] : wEvents.map((l) => l.firstChild).filter((c) => c.checked).map((c) => c.value);
+      const r = await api(`${base}/webhooks`, { method: 'POST', body: JSON.stringify({ url: wUrl.value.trim(), events }) });
+      toast('Webhook added'); again({ secret: r.secret, url: r.url });
+    } catch (err) { wMsg.textContent = err.message; wGo.disabled = false; }
+  };
+
+  // ---- how to call it ----
+  const origin = location.origin;
+  const curl = `curl ${origin}/v1/messages \\\n  -H "Authorization: Bearer YOUR_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"to":"923001234567","type":"text","text":"Hello!"}'`;
+  const curlCopy = el('button', { type: 'button', className: 'alt', textContent: 'Copy' }); curlCopy.onclick = () => copyText(curl, curlCopy);
+  const baseCopy = el('button', { type: 'button', className: 'alt', textContent: 'Copy' }); baseCopy.onclick = () => copyText(`${origin}/v1`, baseCopy);
+
+  box.replaceChildren(el('div', { className: 'apibox' },
+    ...(created?.key ? [secretBox(`Key "${created.name}" created. Copy it now:`, created.key, 'It is shown only once. Keep it private: anyone with it can use this business\'s WhatsApp.')] : []),
+    ...(created?.secret ? [secretBox('Webhook added. Its signing secret:', created.secret, 'Shown only once. Your system uses it to check that events really come from here.')] : []),
+    sec('API keys', ...keyRows, kForm),
+    sec('Webhooks', ...hookRows, wForm),
+    sec('Use it', el('div', { className: 'row' }, el('code', { textContent: `${origin}/v1` }), baseCopy), el('pre', { textContent: curl }), el('div', { className: 'row' }, curlCopy))));
 }
 
 // The business page's Usage tab: the same report for just that business.

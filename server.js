@@ -8,12 +8,16 @@ const wa = require('./sessions');
 const rules = require('./rules');
 const db = require('./db');
 const auth = require('./auth');
+const apikeys = require('./apikeys');
+const webhooks = require('./webhooks');
 
 const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : false); // Railway/Docker: one proxy in front
 app.disable('x-powered-by');
+// The public API for other systems (its own keys, body limits and error format).
+app.use('/v1', require('./api-v1'));
 app.use(express.json({ limit: '100kb' }));
 app.use((req, res, next) => { // same-origin dashboard only
   res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin' });
@@ -141,7 +145,7 @@ app.get('/api/sessions/:id/orders', wrap(async (req, res) => {
 }));
 app.patch('/api/sessions/:id/orders/:orderId', wrap(async (req, res) => {
   wa.getSession(req.params.id);
-  res.json(await db.setOrderStatus(req.params.id, Number(req.params.orderId), req.body?.status));
+  res.json(await wa.setOrderStatus(req.params.id, Number(req.params.orderId), req.body?.status));
 }));
 app.get('/api/sessions/:id/questions', wrap(async (req, res) => {
   wa.getSession(req.params.id);
@@ -154,6 +158,33 @@ app.post('/api/sessions/:id/questions/:questionId/answer', wrap(async (req, res)
 app.post('/api/sessions/:id/send', wrap(async (req, res) => {
   res.json(await wa.sendMessage(req.params.id, req.body?.to, req.body?.message));
 }));
+
+// ---- API keys and webhooks for other systems (the dashboard side; the API itself is /v1) ----
+app.get('/api/sessions/:id/api-keys', wrap(async (req, res) => res.json({ keys: await db.listApiKeys(req.params.id), scopes: apikeys.SCOPES })));
+app.post('/api/sessions/:id/api-keys', wrap(async (req, res) => {
+  res.status(201).json(await apikeys.create(req.params.id, { name: req.body?.name, scopes: req.body?.scopes, by: req.user.id }));
+}));
+app.delete('/api/sessions/:id/api-keys/:keyId', wrap(async (req, res) => {
+  if (!(await db.deleteApiKey(req.params.id, req.params.keyId))) return res.status(404).json({ error: 'Key not found.' });
+  res.json({ ok: true });
+}));
+app.get('/api/sessions/:id/webhooks', wrap(async (req, res) => {
+  res.json({ webhooks: (await db.listWebhooks(req.params.id)).map(webhooks.publicHook), events: webhooks.EVENTS });
+}));
+app.post('/api/sessions/:id/webhooks', wrap(async (req, res) => res.status(201).json(await webhooks.create(req.params.id, req.body || {}))));
+app.patch('/api/sessions/:id/webhooks/:hookId', wrap(async (req, res) => {
+  const hook = await db.getWebhook(req.params.id, req.params.hookId);
+  if (!hook) return res.status(404).json({ error: 'Webhook not found.' });
+  if (typeof req.body?.active !== 'boolean') return res.status(400).json({ error: '"active" must be true or false.' });
+  await db.updateWebhook(hook.id, { active: req.body.active, ...(req.body.active ? { failures: 0 } : {}) });
+  res.json({ ok: true });
+}));
+app.delete('/api/sessions/:id/webhooks/:hookId', wrap(async (req, res) => {
+  if (!(await db.deleteWebhook(req.params.id, req.params.hookId))) return res.status(404).json({ error: 'Webhook not found.' });
+  res.json({ ok: true });
+}));
+app.post('/api/sessions/:id/webhooks/:hookId/test', wrap(async (req, res) => res.json(await webhooks.test(req.params.id, req.params.hookId))));
+app.get('/api/sessions/:id/webhooks/:hookId/deliveries', wrap(async (req, res) => res.json({ deliveries: await db.listDeliveries(req.params.id, req.params.hookId, 30) })));
 
 // Anything else that goes wrong (bad JSON, ...) answers in JSON too.
 app.use((err, req, res, next) => {
@@ -263,6 +294,7 @@ async function connectDb() {
 }
 
 connectDb().then(async () => {
+  webhooks.start();
   await rules.load(); // settings from MongoDB (and a one-time import of old settings files)
   const superAdmin = await auth.ensureSuperAdmin();
   // Businesses made before accounts existed belong to the super admin (admins see all anyway).

@@ -43,6 +43,10 @@ async function init() {
     aiUsage: db.collection('ai_usage'), // one document per AI call: tokens, time, outcome, cost
     users: db.collection('users'), // accounts (_id = uuid): email, password hash, role, status
     authSessions: db.collection('auth_sessions'), // sign-in sessions (_id = hash of the cookie token)
+    apiKeys: db.collection('api_keys'), // keys for other systems (_id = hash of the key): one business each
+    webhooks: db.collection('webhooks'), // where to send events (_id = uuid)
+    webhookDeliveries: db.collection('webhook_deliveries'), // each event sent to each webhook, with retries
+    apiIdem: db.collection('api_idempotency'), // replies kept per Idempotency-Key
   };
   await Promise.all([
     col.customers.createIndex({ business: 1, chat_id: 1 }, { unique: true }),
@@ -67,6 +71,13 @@ async function init() {
     col.users.createIndex({ role: 1 }, { unique: true, partialFilterExpression: { role: 'super_admin' }, name: 'one_super_admin' }),
     col.authSessions.createIndex({ user_id: 1 }),
     col.authSessions.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+    col.apiKeys.createIndex({ business: 1 }),
+    col.webhooks.createIndex({ business: 1 }),
+    col.webhookDeliveries.createIndex({ status: 1, next_at: 1 }),
+    col.webhookDeliveries.createIndex({ business: 1, webhook: 1, created_at: -1 }),
+    ttlIndex(col.webhookDeliveries, 14),
+    col.apiIdem.createIndex({ business: 1, key: 1 }, { unique: true }),
+    ttlIndex(col.apiIdem, 1),
     ttlIndex(col.waMessages, TTL_DAYS.messages),
     // MongoDB deletes these by itself once they're older than the limit.
     ttlIndex(col.transcripts, TTL_DAYS.transcripts),
@@ -196,6 +207,19 @@ function getOrder(business, id) {
 function listOrders(business, { chatId, limit = 200 } = {}) {
   const filter = chatId ? { business, chat_id: chatId } : { business };
   return col.orders.find(filter, HIDE_ID).sort({ created_at: -1 }).limit(limit).toArray();
+}
+
+// Orders for the API: optional status / customer / date filters, newest first, paged.
+async function queryOrders(business, { status, chatId, since, limit = 50, offset = 0 } = {}) {
+  const filter = { business };
+  if (status) filter.status = status;
+  if (chatId) filter.chat_id = chatId;
+  if (since) filter.created_at = { $gte: since };
+  const [items, total] = await Promise.all([
+    col.orders.find(filter, HIDE_ID).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
+    col.orders.countDocuments(filter),
+  ]);
+  return { items, total };
 }
 
 async function setOrderStatus(business, id, status, now = Date.now()) {
@@ -396,6 +420,10 @@ async function deleteBusiness(business) {
     col.waChats.deleteMany({ business }),
     col.aiUsage.deleteMany({ business }),
     col.businesses.deleteOne({ _id: business }),
+    col.apiKeys.deleteMany({ business }),
+    col.webhooks.deleteMany({ business }),
+    col.webhookDeliveries.deleteMany({ business }),
+    col.apiIdem.deleteMany({ business }),
   ]);
 }
 
@@ -501,7 +529,65 @@ function usageRows({ businesses, since, limit = 50000 }) {
   return col.aiUsage.find(match, HIDE_ID).sort({ at: -1 }).limit(limit).toArray();
 }
 
+// ---- API keys, webhooks, idempotency (for other systems) ----
+const strip = (d) => { if (d) { d.id = d._id; delete d._id; } return d; };
+const createApiKey = (doc) => col.apiKeys.insertOne(doc);
+const getApiKey = (hash) => col.apiKeys.findOne({ _id: hash });
+const touchApiKey = (hash, now = Date.now()) => col.apiKeys.updateOne({ _id: hash }, { $set: { last_used_at: now } });
+async function listApiKeys(business) {
+  const docs = await col.apiKeys.find({ business }, { projection: { _id: 1, name: 1, prefix: 1, scopes: 1, created_at: 1, last_used_at: 1 } }).sort({ created_at: -1 }).toArray();
+  return docs.map(strip);
+}
+async function deleteApiKey(business, id) { return (await col.apiKeys.deleteOne({ _id: id, business })).deletedCount > 0; }
+
+const createWebhook = (doc) => col.webhooks.insertOne(doc);
+const getWebhook = (business, id) => col.webhooks.findOne({ _id: id, business }).then(strip);
+async function listWebhooks(business) {
+  return (await col.webhooks.find({ business }, { projection: { secret: 0 } }).sort({ created_at: -1 }).toArray()).map(strip);
+}
+const activeWebhooks = (business) => col.webhooks.find({ business, active: true }).toArray();
+// Count one more failed delivery in a row (atomic: deliveries run side by side); returns the new count.
+async function bumpWebhookFailures(id) {
+  const doc = await col.webhooks.findOneAndUpdate({ _id: id }, { $inc: { failures: 1 } }, { returnDocument: 'after', projection: { failures: 1 } });
+  return doc?.failures || 0;
+}
+const updateWebhook = (id, set) => col.webhooks.updateOne({ _id: id }, { $set: set });
+async function deleteWebhook(business, id) {
+  const ok = (await col.webhooks.deleteOne({ _id: id, business })).deletedCount > 0;
+  if (ok) await col.webhookDeliveries.deleteMany({ business, webhook: id });
+  return ok;
+}
+const addDelivery = (doc) => col.webhookDeliveries.insertMany(doc);
+const claimDelivery = (now) => col.webhookDeliveries.findOneAndUpdate(
+  { status: 'pending', next_at: { $lte: now } },
+  { $set: { status: 'sending', next_at: now + 120000 } }, // if the server dies mid-send it is picked up again
+  { sort: { next_at: 1 }, returnDocument: 'after' },
+);
+const updateDelivery = (id, set) => col.webhookDeliveries.updateOne({ _id: id }, { $set: set });
+const recoverDeliveries = (now) => col.webhookDeliveries.updateMany({ status: 'sending', next_at: { $lte: now } }, { $set: { status: 'pending' } });
+async function listDeliveries(business, webhook, limit = 30) {
+  return (await col.webhookDeliveries.find({ business, ...(webhook ? { webhook } : {}) }, { projection: { body: 0 } }).sort({ created_at: -1 }).limit(limit).toArray()).map(strip);
+}
+const getDelivery = (business, id) => col.webhookDeliveries.findOne({ _id: id, business });
+
+// Reserve an Idempotency-Key. Returns null when it is new, or the earlier record.
+async function reserveIdem(business, key, now = Date.now()) {
+  try {
+    await col.apiIdem.insertOne({ business, key, state: 'working', at: new Date(now) });
+    return null;
+  } catch (e) {
+    if (e.code !== 11000) throw e;
+    return col.apiIdem.findOne({ business, key });
+  }
+}
+const finishIdem = (business, key, status, response) => col.apiIdem.updateOne({ business, key }, { $set: { state: 'done', status, response } });
+const releaseIdem = (business, key) => col.apiIdem.deleteOne({ business, key });
+
 module.exports = {
+  createApiKey, getApiKey, touchApiKey, listApiKeys, deleteApiKey,
+  createWebhook, getWebhook, listWebhooks, activeWebhooks, updateWebhook, bumpWebhookFailures, deleteWebhook,
+  addDelivery, claimDelivery, updateDelivery, recoverDeliveries, listDeliveries, getDelivery,
+  reserveIdem, finishIdem, releaseIdem,
   recordUsage, usageReport, usageRows,
   createUser, findUserByEmail, getUser, getSuperAdmin, updateUser, deleteUser, listUsers,
   createAuthSession, getAuthSession, deleteAuthSession, deleteUserSessions,
@@ -509,7 +595,7 @@ module.exports = {
   saveWaMessages, recentWaMessages, getWaMessage, saveWaChats, listWaChats, countWaChats,
   init, close, ORDER_STATUSES, phoneOf,
   getCustomer, touchCustomer, countTurn, saveProfile, listCustomers,
-  addOrder, getOrder, listOrders, setOrderStatus,
+  addOrder, getOrder, listOrders, queryOrders, setOrderStatus,
   addEscalation, setEscalationMessage, getEscalation, escalationByManagerMsg, openEscalations,
   countOpenEscalations, answerEscalation, listEscalations,
   deleteBusiness,

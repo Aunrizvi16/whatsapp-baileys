@@ -32,6 +32,10 @@ node --env-file=../atlas-credentials.env --env-file=.env test/run-all.js
 `npm run test:auth` (needs a MongoDB; `MONGODB_URI`) starts the real server and checks sign-up,
 sign-in, approval, roles, business ownership, the single super admin, session revocation and rate limits.
 
+`npm run test:api` (needs an empty MongoDB; `MONGODB_URI`) checks the public API end to end: keys and
+scopes, every message type, file checks, voice conversion, idempotency, orders, webhooks (signing,
+retries, switching off), rate limits and isolation between businesses.
+
 Runs 20 end-to-end steps against a fake WhatsApp connection and a fake OpenAI server, in a
 throwaway database (`wa_test_baileys`, dropped afterwards): QR, pairing code, linking, AI
 text reply with typing, history, voice note, photo, hidden-number (@lid) customers, manager
@@ -65,6 +69,12 @@ Security: scrypt password hashes; sign-in token in an `HttpOnly`, `SameSite=Stri
 and sign-in don't reveal whether an email is registered; disabling a user or changing their
 password ends their sessions at once. The old shared `API_KEY` is gone.
 Serve it over HTTPS (Railway does); the cookie is marked `Secure` automatically then.
+
+## API for other systems
+
+Other systems can send messages (text, images, video, voice notes, documents, stickers, locations,
+contact cards, reactions), read contacts and orders, and receive events by webhook. Each business
+has its own keys and webhooks in its **API** tab. The full guide is in [API.md](API.md).
 
 ## AI usage
 
@@ -103,6 +113,12 @@ admins see everything. Cost is an estimate from your own price settings, not fro
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | (none) | Required for AI replies. `OPENAI_API_KEY` is also needed for voice notes |
 | `AI_PRICE_INPUT_PER_M` / `AI_PRICE_OUTPUT_PER_M` | (none) | USD per 1M tokens for your model. Without them the Usage page shows tokens but no cost. Optional: `AI_PRICE_CACHE_READ_PER_M`, `AI_PRICE_CACHE_WRITE_PER_M`, `AI_PRICE_VOICE_INPUT_PER_M`, `AI_PRICE_VOICE_OUTPUT_PER_M` |
 | `USAGE_RETENTION_DAYS` | `400` | How long AI usage records are kept |
+| `PUBLIC_URL` | (none) | Public address of this server; makes media links in webhook events complete |
+| `API_RATE_PER_MIN` | `120` | API requests per minute per key |
+| `API_SEND_GAP_MS` | `400` | Pause between API messages sent for one business |
+| `API_URL_SECRET` | random | Signs media links; set it when running several servers |
+| `FFMPEG_PATH` | `ffmpeg` | For converting audio to voice notes (included in the Docker image) |
+| `ALLOW_PRIVATE_URLS` | off | `1` lets media links and webhooks point at private addresses |
 
 ## Deploy (Railway)
 
