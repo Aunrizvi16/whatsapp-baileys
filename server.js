@@ -27,6 +27,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/healthz', (req, res) => res.send('ok'));
 
+// The API guide: API.md is the one source; /docs shows it as a page.
+app.get('/api-guide.md', (req, res) => res.type('text/markdown; charset=utf-8').sendFile(path.join(__dirname, 'API.md')));
+app.get('/docs', (req, res) => res.sendFile(path.join(__dirname, 'public', 'docs.html')));
+
 // Sign up, sign in, sign out, who am I.
 app.use('/auth', auth.authRouter);
 

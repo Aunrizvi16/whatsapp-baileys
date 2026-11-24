@@ -172,6 +172,16 @@ async function step(name, fn) {
       assert(stored.every((d) => d._id.length === 64 && !JSON.stringify(d).includes(KEY)), 'only a hash is stored');
     });
 
+    await step('the API guide is served as a page, without signing in', async () => {
+      const page = await call('GET', '/docs');
+      assert.strictEqual(page.status, 200);
+      assert.match(page.headers.get('content-type'), /text\/html/);
+      assert.match(page.text, /API guide/);
+      const md = await call('GET', '/api-guide.md');
+      assert.strictEqual(md.status, 200);
+      assert(md.text.startsWith('# API guide'));
+    });
+
     await step('GET /v1/business, and scopes are enforced', async () => {
       const r = await call('GET', '/v1/business', { key: KEY });
       assert.strictEqual(r.status, 200);

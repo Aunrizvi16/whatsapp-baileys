@@ -2327,7 +2327,7 @@ async function showBusinessApi(created) {
     ...(created?.secret ? [secretBox('Webhook added. Its signing secret:', created.secret, 'Shown only once. Your system uses it to check that events really come from here.')] : []),
     sec('API keys', ...keyRows, kForm),
     sec('Webhooks', ...hookRows, wForm),
-    sec('Use it', el('div', { className: 'row' }, el('code', { textContent: `${origin}/v1` }), baseCopy), el('pre', { textContent: curl }), el('div', { className: 'row' }, curlCopy))));
+    sec('Use it', el('div', { className: 'row' }, el('code', { textContent: `${origin}/v1` }), baseCopy), el('pre', { textContent: curl }), el('div', { className: 'row' }, curlCopy, el('a', { href: '/docs', target: '_blank', rel: 'noopener', className: 'alt', textContent: 'Open the full API guide' })))));
 }
 
 // The business page's Usage tab: the same report for just that business.
